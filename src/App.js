@@ -5,6 +5,7 @@ import TaskList from './components/TaskList';
 import SettingsModal from './components/SettingsModal';
 import FolderSidebar from './components/FolderSidebar';
 import { notificationService } from './services/notificationService';
+import { exportAllTasksToCalendar, exportFolderToCalendar } from './services/calendarService';
 
 function App() {
   // Load tasks from localStorage
@@ -87,8 +88,8 @@ function App() {
     // Loop through all incomplete tasks with due date and time
     tasks.forEach((task) => {
       if (!task.completed && task.dueDate && task.dueTime) {
-        // Re-schedule notification for this task
-        notificationService.scheduleNotification(task);
+        // Re-schedule notification for this task (with settings for multi-channel)
+        notificationService.scheduleNotification(task, settings);
       }
     });
 
@@ -96,6 +97,7 @@ function App() {
     return () => {
       notificationService.clearAllScheduled();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run only once on mount (empty dependency array)
 
   // Check for overdue/upcoming tasks periodically
@@ -114,6 +116,17 @@ function App() {
   }, [tasks, settings.notifications]);
 
   const addTask = (text, folder = 'Personal', dueDate = null, priority = 'medium', dueTime = null) => {
+    // 🔍 DEBUG LOG
+    console.log('➕ [App addTask] Called:', {
+      text,
+      folder,
+      dueDate,
+      dueTime,
+      priority,
+      hasSmartDefaults: !!(dueDate && dueTime),
+      timestamp: new Date().toISOString()
+    });
+
     const newTask = {
       id: crypto.randomUUID(),
       text,
@@ -131,7 +144,7 @@ function App() {
 
       // Schedule notification if task has time and notifications are enabled
       if (settings.notifications && newTask.dueDate && newTask.dueTime) {
-        notificationService.scheduleNotification(newTask);
+        notificationService.scheduleNotification(newTask, settings);
       }
 
       // Also trigger immediate check for overdue/upcoming tasks
@@ -167,6 +180,27 @@ function App() {
     setTasks(tasks.filter((task) => task.id !== id));
   };
 
+  const modifyTask = (id, changes) => {
+    setTasks(
+      tasks.map((task) => {
+        if (task.id === id) {
+          const updatedTask = { ...task, ...changes };
+
+          // If date or time changed, reschedule notification
+          if (settings.notifications && (changes.dueDate || changes.dueTime)) {
+            notificationService.cancelScheduledNotification(id);
+            if (updatedTask.dueDate && updatedTask.dueTime) {
+              notificationService.scheduleNotification(updatedTask, settings);
+            }
+          }
+
+          return updatedTask;
+        }
+        return task;
+      })
+    );
+  };
+
   const saveSettings = (newSettings) => {
     setSettings(newSettings);
   };
@@ -190,6 +224,19 @@ function App() {
     );
     if (selectedFolder === folderName) {
       setSelectedFolder('All Tasks');
+    }
+  };
+
+  const handleExportToCalendar = () => {
+    try {
+      if (selectedFolder === 'All Tasks') {
+        exportAllTasksToCalendar(tasks);
+      } else {
+        exportFolderToCalendar(tasks, selectedFolder);
+      }
+      alert('✅ Calendar file downloaded! Open it to add tasks to your calendar.');
+    } catch (error) {
+      alert(error.message || 'Failed to export tasks to calendar');
     }
   };
 
@@ -236,12 +283,21 @@ function App() {
             <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
               Task Assistant
             </h1>
-            <button
-              onClick={() => setShowSettings(true)}
-              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-            >
-              Settings
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={handleExportToCalendar}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                title="Export tasks to calendar"
+              >
+                📅 Export to Calendar
+              </button>
+              <button
+                onClick={() => setShowSettings(true)}
+                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+              >
+                Settings
+              </button>
+            </div>
           </div>
 
           {/* Task Form */}
@@ -250,6 +306,11 @@ function App() {
             folders={folders}
             selectedFolder={selectedFolder}
             settings={settings}
+            tasks={tasks}
+            onModifyTask={modifyTask}
+            onDeleteTask={deleteTask}
+            onAddFolder={addFolder}
+            onDeleteFolder={deleteFolder}
           />
 
           {/* Task Stats */}
@@ -282,6 +343,8 @@ function App() {
             tasks={sortedTasks}
             onToggle={toggleTask}
             onDelete={deleteTask}
+            onModify={modifyTask}
+            folders={folders}
           />
 
           {/* Settings Modal */}

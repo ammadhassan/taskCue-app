@@ -157,8 +157,10 @@ class NotificationService {
 
   /**
    * Schedule a notification for a specific time
+   * @param {Object} task - The task to notify about
+   * @param {Object} settings - User settings (optional, for multi-channel)
    */
-  scheduleNotification(task) {
+  scheduleNotification(task, settings = null) {
     if (!task.dueDate || !task.dueTime) return;
 
     // Parse the due date and time
@@ -181,7 +183,13 @@ class NotificationService {
       console.log(`Scheduling notification for task "${task.text}" in ${Math.round(msUntilDue / 1000)} seconds`);
 
       const timeoutId = setTimeout(() => {
-        this.notifyTask(task, 'due_soon');
+        if (settings) {
+          // Multi-channel notification
+          this.sendMultiChannelNotification(task, settings);
+        } else {
+          // Browser-only notification (backward compatible)
+          this.notifyTask(task, 'due_soon');
+        }
         this.scheduledNotifications.delete(task.id);
       }, msUntilDue);
 
@@ -210,6 +218,121 @@ class NotificationService {
       clearTimeout(timeoutId);
     });
     this.scheduledNotifications.clear();
+  }
+
+  /**
+   * Send email notification for a task
+   */
+  async sendEmailNotification(task, email) {
+    if (!email) {
+      console.warn('No email address provided for notification');
+      return false;
+    }
+
+    const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/send-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: email,
+          subject: `Task Reminder: ${task.text}`,
+          taskDetails: {
+            task: task.text,
+            dueDate: task.dueDate,
+            dueTime: task.dueTime,
+            folder: task.folder,
+            priority: task.priority,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Failed to send email notification:', error);
+        return false;
+      }
+
+      console.log(`✉️ Email notification sent to ${email} for task: ${task.text}`);
+      return true;
+    } catch (error) {
+      console.error('Error sending email notification:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Send SMS notification for a task
+   */
+  async sendSMSNotification(task, phoneNumber) {
+    if (!phoneNumber) {
+      console.warn('No phone number provided for notification');
+      return false;
+    }
+
+    const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+
+    try {
+      const message = `⏰ Task Reminder: ${task.text}${
+        task.dueDate && task.dueTime ? ` - Due: ${task.dueDate} at ${task.dueTime}` : ''
+      }`;
+
+      const response = await fetch(`${BACKEND_URL}/api/send-sms`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: phoneNumber,
+          message: message,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Failed to send SMS notification:', error);
+        return false;
+      }
+
+      console.log(`📱 SMS notification sent to ${phoneNumber} for task: ${task.text}`);
+      return true;
+    } catch (error) {
+      console.error('Error sending SMS notification:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Send multi-channel notification (browser + email + SMS)
+   */
+  async sendMultiChannelNotification(task, settings) {
+    const promises = [];
+
+    // Browser notification
+    if (settings.notifications && settings.desktopNotifications) {
+      this.notifyTask(task, 'due_soon');
+    }
+
+    // Email notification
+    if (settings.emailNotifications && settings.email) {
+      promises.push(this.sendEmailNotification(task, settings.email));
+    }
+
+    // SMS notification
+    if (settings.smsNotifications && settings.phoneNumber) {
+      promises.push(this.sendSMSNotification(task, settings.phoneNumber));
+    }
+
+    // Wait for all notifications to complete
+    const results = await Promise.allSettled(promises);
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        console.error(`Notification ${index} failed:`, result.reason);
+      }
+    });
   }
 }
 

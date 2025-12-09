@@ -1,4 +1,10 @@
+import { useState } from 'react';
+
 export default function SettingsModal({ isOpen, onClose, settings, onSave }) {
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [testingSMS, setTestingSMS] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
@@ -7,11 +13,95 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave }) {
     onSave({
       notifications: formData.get('notifications') === 'on',
       desktopNotifications: formData.get('desktopNotifications') === 'on',
+      emailNotifications: formData.get('emailNotifications') === 'on',
+      smsNotifications: formData.get('smsNotifications') === 'on',
       soundAlerts: formData.get('soundAlerts') === 'on',
+      email: formData.get('email') || '',
+      phoneNumber: formData.get('phoneNumber') || '',
       theme: formData.get('theme'),
       defaultTiming: formData.get('defaultTiming'),
     });
     onClose();
+  };
+
+  const handleTestEmail = async () => {
+    const emailInput = document.querySelector('input[name="email"]');
+    const email = emailInput?.value;
+
+    if (!email) {
+      setTestResult({ type: 'error', message: 'Please enter an email address first' });
+      return;
+    }
+
+    setTestingEmail(true);
+    setTestResult(null);
+
+    try {
+      const response = await fetch('http://localhost:3001/api/send-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: email,
+          subject: 'Test Email from Task Assistant',
+          taskDetails: {
+            task: 'This is a test notification',
+            dueDate: new Date().toISOString().split('T')[0],
+            dueTime: new Date().toTimeString().split(' ')[0].substring(0, 5),
+            folder: 'Test',
+          },
+        }),
+      });
+
+      if (response.ok) {
+        setTestResult({ type: 'success', message: 'Test email sent! Check your inbox.' });
+      } else {
+        const error = await response.json();
+        setTestResult({ type: 'error', message: error.error || 'Failed to send email' });
+      }
+    } catch (error) {
+      setTestResult({ type: 'error', message: 'Cannot connect to server. Make sure backend is running.' });
+    } finally {
+      setTestingEmail(false);
+    }
+  };
+
+  const handleTestSMS = async () => {
+    const phoneInput = document.querySelector('input[name="phoneNumber"]');
+    const phoneNumber = phoneInput?.value;
+
+    if (!phoneNumber) {
+      setTestResult({ type: 'error', message: 'Please enter a phone number first' });
+      return;
+    }
+
+    setTestingSMS(true);
+    setTestResult(null);
+
+    try {
+      const response = await fetch('http://localhost:3001/api/send-sms', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: phoneNumber,
+          message: 'Test SMS from Task Assistant: Your notifications are working!',
+        }),
+      });
+
+      if (response.ok) {
+        setTestResult({ type: 'success', message: 'Test SMS sent! Check your phone.' });
+      } else {
+        const error = await response.json();
+        setTestResult({ type: 'error', message: error.error || 'Failed to send SMS' });
+      }
+    } catch (error) {
+      setTestResult({ type: 'error', message: 'Cannot connect to server or SMS not configured.' });
+    } finally {
+      setTestingSMS(false);
+    }
   };
 
   const requestNotificationPermission = async () => {
@@ -33,8 +123,8 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave }) {
       />
 
       {/* Modal */}
-      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6 z-10">
-        <h2 className="text-2xl font-bold mb-4 dark:text-white">Settings</h2>
+      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6 z-10 max-h-[90vh] overflow-y-auto">
+        <h2 className="text-2xl font-bold mb-4 dark:text-white sticky top-0 bg-white dark:bg-gray-800 pb-2">Settings</h2>
 
         {/* Notification Permission Status Banner */}
         {notificationPermission === 'denied' && (
@@ -128,6 +218,108 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave }) {
               />
               <span>Sound Alerts</span>
             </label>
+
+            <label className="flex items-center gap-2 dark:text-gray-200 text-sm">
+              <input
+                type="checkbox"
+                name="emailNotifications"
+                defaultChecked={settings.emailNotifications === true}
+                className="w-4 h-4"
+              />
+              <span>Email Notifications</span>
+            </label>
+
+            <label className="flex items-center gap-2 dark:text-gray-200 text-sm">
+              <input
+                type="checkbox"
+                name="smsNotifications"
+                defaultChecked={settings.smsNotifications === true}
+                className="w-4 h-4"
+              />
+              <span>SMS/Text Notifications</span>
+            </label>
+          </div>
+
+          {/* Test Result Banner */}
+          {testResult && (
+            <div className={`p-3 rounded-lg border ${
+              testResult.type === 'success'
+                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+            }`}>
+              <div className="flex items-center gap-2">
+                <span className={testResult.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+                  {testResult.type === 'success' ? '✓' : '⚠️'}
+                </span>
+                <p className={`text-sm ${
+                  testResult.type === 'success'
+                    ? 'text-green-800 dark:text-green-200'
+                    : 'text-red-800 dark:text-red-200'
+                }`}>
+                  {testResult.message}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Email Configuration */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <label className="block mb-2 font-medium dark:text-gray-200">
+              Email Address
+            </label>
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+              Enter your email to receive task reminders via email
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="email"
+                name="email"
+                defaultValue={settings.email || ''}
+                placeholder="your-email@example.com"
+                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="button"
+                onClick={handleTestEmail}
+                disabled={testingEmail}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {testingEmail ? 'Sending...' : 'Test Email'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              💡 Backend must be configured with Gmail credentials (see NOTIFICATION_FEATURES.md)
+            </p>
+          </div>
+
+          {/* SMS Configuration */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <label className="block mb-2 font-medium dark:text-gray-200">
+              Phone Number
+            </label>
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+              Enter your phone number for SMS reminders (with country code, e.g., +1234567890)
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="tel"
+                name="phoneNumber"
+                defaultValue={settings.phoneNumber || ''}
+                placeholder="+1234567890"
+                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="button"
+                onClick={handleTestSMS}
+                disabled={testingSMS}
+                className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {testingSMS ? 'Sending...' : 'Test SMS'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              💡 Requires Twilio setup (~$0.0079 per SMS)
+            </p>
           </div>
 
           <div>

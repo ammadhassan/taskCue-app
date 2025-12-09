@@ -10,11 +10,19 @@
  * @returns {object} { dueDate: 'YYYY-MM-DD', dueTime: 'HH:MM', reason: 'why this default' }
  */
 export function getSmartDefaults(taskText, defaultMode = 'tomorrow_morning') {
+  console.log('✨ [getSmartDefaults] Called:', {
+    taskText,
+    defaultMode,
+    timestamp: new Date().toISOString()
+  });
+
   const text = taskText.toLowerCase();
 
   // If user disabled defaults, return null
   if (defaultMode === 'manual') {
-    return { dueDate: null, dueTime: null, reason: null };
+    const result = { dueDate: null, dueTime: null, reason: null };
+    console.log('✨ [getSmartDefaults] Manual mode - returning nulls:', result);
+    return result;
   }
 
   // Smart defaults mode - analyze task text
@@ -118,54 +126,64 @@ export function getSmartDefaults(taskText, defaultMode = 'tomorrow_morning') {
     // No specific keywords detected - fall back to tomorrow morning
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    return {
+    const result = {
       dueDate: formatDate(tomorrow),
       dueTime: '09:00',
       reason: 'Default - Tomorrow morning'
     };
+    console.log('✨ [getSmartDefaults] Smart mode - no keywords matched, using default:', result);
+    return result;
   }
 
   // Simple preset defaults based on user preference
+  let result;
   switch (defaultMode) {
     case 'end_of_today': {
       const today = new Date();
-      return {
+      result = {
         dueDate: formatDate(today),
         dueTime: '23:59',
         reason: 'User default - End of today'
       };
+      break;
     }
 
     case 'tomorrow_morning': {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
-      return {
+      result = {
         dueDate: formatDate(tomorrow),
         dueTime: '09:00',
         reason: 'User default - Tomorrow morning'
       };
+      break;
     }
 
     case 'next_business_day': {
       const nextBusiness = getNextBusinessDay();
-      return {
+      result = {
         dueDate: formatDate(nextBusiness),
         dueTime: '09:00',
         reason: 'User default - Next business day'
       };
+      break;
     }
 
     default: {
       // Default fallback: tomorrow morning
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
-      return {
+      result = {
         dueDate: formatDate(tomorrow),
         dueTime: '09:00',
         reason: 'Default - Tomorrow morning'
       };
+      break;
     }
   }
+
+  console.log('✨ [getSmartDefaults] Preset mode result:', { defaultMode, result });
+  return result;
 }
 
 /**
@@ -238,5 +256,19 @@ function getNextBusinessDay() {
 export function shouldApplyDefaults(dueDate, dueTime) {
   // Apply defaults only if both date AND time are missing
   // If user specified either one, respect their input
-  return !dueDate && !dueTime;
+  const result = !dueDate && !dueTime;
+
+  console.log('🔍 [shouldApplyDefaults] Evaluation:', {
+    dueDate,
+    dueDateType: typeof dueDate,
+    dueDateLength: dueDate?.length,
+    dueDateFalsy: !dueDate,
+    dueTime,
+    dueTimeType: typeof dueTime,
+    dueTimeFalsy: !dueTime,
+    result,
+    timestamp: new Date().toISOString()
+  });
+
+  return result;
 }

@@ -3,185 +3,209 @@ import VoiceInput from './VoiceInput';
 import { extractTasksFromText } from '../services/taskExtractor';
 import { getSmartDefaults, shouldApplyDefaults } from '../services/defaultDateSelector';
 
-export default function TaskForm({ onAddTask, folders, selectedFolder, settings }) {
+export default function TaskForm({ onAddTask, folders, selectedFolder, settings, tasks, onModifyTask, onDeleteTask, onAddFolder, onDeleteFolder }) {
   const [input, setInput] = useState('');
   const [showVoice, setShowVoice] = useState(false);
-  const [showAI, setShowAI] = useState(false);
-  const [showAIVoice, setShowAIVoice] = useState(false);
-  const [extractedTasks, setExtractedTasks] = useState([]);
   const [isExtracting, setIsExtracting] = useState(false);
   const [folder, setFolder] = useState(
     selectedFolder === 'All Tasks' ? 'Personal' : selectedFolder
   );
   const [dueDate, setDueDate] = useState('');
+  const [dueTime, setDueTime] = useState('');
   const [priority, setPriority] = useState('medium');
 
-  const handleSubmit = (e) => {
+  // Helper function to apply AI-extracted actions immediately
+  const applyTaskActions = (actions) => {
+    actions.forEach((actionItem) => {
+      if (actionItem.action === 'create') {
+        // Create new task
+        let taskDueDate = actionItem.dueDate || dueDate || null;
+        let taskDueTime = actionItem.dueTime || dueTime || null; // AI time takes priority, fallback to manual
+        const taskFolder = actionItem.folder || folder;
+
+        // Apply smart defaults if AI didn't extract date/time
+        if (shouldApplyDefaults(taskDueDate, taskDueTime)) {
+          const defaults = getSmartDefaults(actionItem.task, settings?.defaultTiming || 'tomorrow_morning');
+          taskDueDate = defaults.dueDate;
+          taskDueTime = defaults.dueTime;
+          console.log('✨ [AI Agent] Applied smart defaults:', {
+            task: actionItem.task,
+            defaults,
+            reason: defaults.reason
+          });
+        } else {
+          console.log('⏭️ [AI Agent] Using AI-extracted dates:', {
+            task: actionItem.task,
+            dueDate: taskDueDate,
+            dueTime: taskDueTime
+          });
+        }
+
+        onAddTask(actionItem.task, taskFolder, taskDueDate, priority, taskDueTime);
+      } else if (actionItem.action === 'modify' && onModifyTask) {
+        // Modify existing task
+        onModifyTask(actionItem.taskId, actionItem.changes);
+      } else if (actionItem.action === 'delete' && onDeleteTask) {
+        // Delete existing task
+        onDeleteTask(actionItem.taskId);
+      } else if (actionItem.action === 'create_folder' && onAddFolder) {
+        // Create new folder
+        console.log('📁 [AI Agent] Creating folder:', actionItem.folderName);
+        onAddFolder(actionItem.folderName);
+      } else if (actionItem.action === 'delete_folder' && onDeleteFolder) {
+        // Delete folder
+        console.log('🗑️ [AI Agent] Deleting folder:', actionItem.folderName);
+        onDeleteFolder(actionItem.folderName);
+      }
+    });
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (input.trim()) {
-      let finalDueDate = dueDate || null;
-      let finalDueTime = null;
-
-      // Apply smart defaults if user hasn't specified date/time
-      if (shouldApplyDefaults(dueDate, null)) {
-        const defaults = getSmartDefaults(input, settings?.defaultTiming || 'tomorrow_morning');
-        finalDueDate = defaults.dueDate;
-        finalDueTime = defaults.dueTime;
-      }
-
-      onAddTask(input.trim(), folder, finalDueDate, priority, finalDueTime);
-      setInput('');
-      setDueDate('');
-      setPriority('medium');
-    }
-  };
-
-  const handleVoiceTranscript = (transcript) => {
-    setInput(transcript);
-    setShowVoice(false);
-
-    // Auto-submit after voice input
-    if (transcript.trim()) {
-      let finalDueDate = dueDate || null;
-      let finalDueTime = null;
-
-      // Apply smart defaults if user hasn't specified date/time
-      if (shouldApplyDefaults(dueDate, null)) {
-        const defaults = getSmartDefaults(transcript, settings?.defaultTiming || 'tomorrow_morning');
-        finalDueDate = defaults.dueDate;
-        finalDueTime = defaults.dueTime;
-      }
-
-      onAddTask(transcript.trim(), folder, finalDueDate, priority, finalDueTime);
-      setInput('');
-      setDueDate('');
-      setPriority('medium');
-    }
-  };
-
-  const handleAIExtract = async () => {
     if (!input.trim()) return;
 
+    // ALWAYS use AI for all inputs - let AI handle everything
+    console.log('🤖 [AI Agent] Processing with AI:', input);
     setIsExtracting(true);
+
     try {
-      const tasks = await extractTasksFromText(input, settings?.defaultTiming || 'tomorrow_morning');
-      setExtractedTasks(tasks);
+      const actions = await extractTasksFromText(
+        input,
+        settings?.defaultTiming || 'tomorrow_morning',
+        tasks || [],
+        folders || []
+      );
+
+      console.log('✅ [AI Agent] AI extracted', actions.length, 'actions');
+
+      // Immediately apply all actions (autonomous mode)
+      applyTaskActions(actions);
+
+      // Clear input only on success
+      setInput('');
+      setDueDate(null);
+      setDueTime(null);
+      setPriority('medium');
+
     } catch (error) {
-      console.error('Error extracting tasks:', error);
-      // Show the actual error message from the LLM
-      alert(error.message || 'Failed to extract tasks. Please try again.');
+      console.error('❌ [AI Agent] AI extraction failed:', error);
+      console.error('❌ [AI Agent] Error details:', {
+        message: error.message,
+        code: error.code,
+        response: error.response?.data,
+        stack: error.stack
+      });
+
+      // Show detailed error message - DO NOT add task if AI fails
+      const errorMsg = error.message || 'Unknown error';
+
+      if (error.message?.includes('Backend server is not running') ||
+          error.code === 'ECONNREFUSED' ||
+          error.message?.includes('Network Error')) {
+        alert(
+          '❌ Backend Server Not Running!\n\n' +
+          'The AI extraction needs the backend server.\n\n' +
+          'To fix:\n' +
+          '1. Open a NEW terminal window\n' +
+          '2. Run: npm run server\n' +
+          '3. Wait for "Task Assistant Backend running" message\n' +
+          '4. Then try adding tasks again'
+        );
+      } else {
+        alert(
+          `❌ AI processing failed:\n\n${errorMsg}\n\n` +
+          'Check browser console (F12) for details.\n\n' +
+          'Task was NOT added.'
+        );
+      }
+
+      // DO NOT fall back to simple mode - fail gracefully
+      // Input stays in field so user can try again
     } finally {
       setIsExtracting(false);
     }
   };
 
-  const handleAddExtractedTasks = () => {
-    extractedTasks.forEach((taskItem) => {
-      // Use individual task's due date, time, and folder
-      const taskDueDate = taskItem.dueDate || dueDate || null;
-      const taskDueTime = taskItem.dueTime || null;
-      const taskFolder = taskItem.folder || folder;
-      onAddTask(taskItem.task, taskFolder, taskDueDate, priority, taskDueTime);
-    });
-    setInput('');
-    setExtractedTasks([]);
-    setShowAI(false);
-    setDueDate('');
-    setPriority('medium');
-  };
+  const handleVoiceTranscript = async (transcript) => {
+    setInput(transcript);
+    setShowVoice(false);
 
-  const handleRemoveExtractedTask = (index) => {
-    setExtractedTasks(extractedTasks.filter((_, i) => i !== index));
-  };
+    // Auto-submit through AI extraction after voice input
+    if (transcript.trim()) {
+      console.log('🎤 [AI Agent] Processing voice input through AI:', transcript);
+      setIsExtracting(true);
 
-  const handleUpdateExtractedTaskDate = (index, newDate) => {
-    const updated = [...extractedTasks];
-    updated[index] = { ...updated[index], dueDate: newDate };
-    setExtractedTasks(updated);
-  };
+      try {
+        const actions = await extractTasksFromText(
+          transcript,
+          settings?.defaultTiming || 'tomorrow_morning',
+          tasks || [],
+          folders || []
+        );
 
-  const handleUpdateExtractedTaskTime = (index, newTime) => {
-    const updated = [...extractedTasks];
-    updated[index] = { ...updated[index], dueTime: newTime };
-    setExtractedTasks(updated);
-  };
+        console.log('✅ [AI Agent] AI extracted', actions.length, 'actions from voice input');
 
-  const handleUpdateExtractedTaskFolder = (index, newFolder) => {
-    const updated = [...extractedTasks];
-    updated[index] = { ...updated[index], folder: newFolder };
-    setExtractedTasks(updated);
-  };
+        // Immediately apply all actions (autonomous mode)
+        applyTaskActions(actions);
 
-  const handleAIVoiceTranscript = (transcript) => {
-    // Check if there's existing text to prevent data loss
-    if (input.trim()) {
-      const confirmReplace = window.confirm(
-        "You have existing text. Do you want to replace it with voice input?\n\nClick OK to replace, or Cancel to keep your existing text."
-      );
-      if (!confirmReplace) {
-        // User chose to keep existing text
-        setShowAIVoice(false);
-        return;
+        // Clear input only on success
+        setInput('');
+        setDueDate(null);
+        setDueTime(null);
+        setPriority('medium');
+
+      } catch (error) {
+        console.error('❌ [AI Agent] Voice AI extraction failed:', error);
+
+        // Show error - DO NOT add task if AI fails
+        alert(
+          `❌ AI processing failed:\n\n${error.message}\n\n` +
+          'Task was NOT added. Please try again.'
+        );
+
+        // DO NOT fall back to simple mode
+        // Input stays in field so user can try again
+      } finally {
+        setIsExtracting(false);
       }
     }
-    // Replace input with voice transcript
-    setInput(transcript);
-    setShowAIVoice(false);
   };
 
   return (
     <div className="mb-6 space-y-3">
-      {/* Toggle Buttons */}
-      <div className="flex gap-2">
+      {/* Voice Toggle - Keep as explicit option */}
+      <div className="flex justify-end">
         <button
           type="button"
-          onClick={() => {
-            setShowVoice(false);
-            setShowAI(false);
-            setExtractedTasks([]);
-          }}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            !showVoice && !showAI
-              ? 'bg-blue-500 text-white'
-              : 'bg-gray-200 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-          }`}
-        >
-          Text
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setShowVoice(true);
-            setShowAI(false);
-            setExtractedTasks([]);
-          }}
+          onClick={() => setShowVoice(!showVoice)}
           className={`px-4 py-2 rounded-lg font-medium transition-colors ${
             showVoice
               ? 'bg-blue-500 text-white'
               : 'bg-gray-200 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
           }`}
         >
-          Voice
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setShowVoice(false);
-            setShowAI(true);
-            setExtractedTasks([]);
-          }}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            showAI
-              ? 'bg-blue-500 text-white'
-              : 'bg-gray-200 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-          }`}
-        >
-          AI Extract
+          🎤 Voice Input
         </button>
       </div>
 
+      {!showVoice ? (
+        <>
+          {/* AI Processing Indicator - shown while extracting */}
+          {isExtracting && (
+            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg animate-pulse">
+              <div className="flex items-center gap-2">
+                <span className="text-blue-600 dark:text-blue-400 text-lg">⏳</span>
+                <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                  AI is processing your request... Please wait
+                </p>
+              </div>
+            </div>
+          )}
+        </>
+      ) : null}
+
       {/* Text Input */}
-      {!showVoice && !showAI && (
+      {!showVoice && (
         <form onSubmit={handleSubmit}>
           <div className="space-y-2">
             {/* Main input row */}
@@ -203,14 +227,15 @@ export default function TaskForm({ onAddTask, folders, selectedFolder, settings 
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Add a new task..."
+                placeholder="Describe what you want... AI will understand! (e.g., 'add buy milk to work folder')"
                 className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400 dark:placeholder-gray-500"
               />
               <button
                 type="submit"
-                className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium transition-colors"
+                disabled={isExtracting}
+                className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Add Task
+                {isExtracting ? 'Processing...' : 'Add Task(s)'}
               </button>
             </div>
 
@@ -222,8 +247,42 @@ export default function TaskForm({ onAddTask, folders, selectedFolder, settings 
                 </label>
                 <input
                   type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
+                  value={dueDate || ''}
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    console.log('📅 [TaskForm Date Input] Changed:', {
+                      newValue,
+                      type: typeof newValue,
+                      length: newValue?.length,
+                      truthy: !!newValue,
+                      convertedToNull: newValue === '' ? null : newValue
+                    });
+                    // Convert empty string to null for consistent falsy checking
+                    setDueDate(newValue === '' ? null : newValue);
+                  }}
+                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600 dark:text-gray-400">
+                  Time:
+                </label>
+                <input
+                  type="time"
+                  value={dueTime || ''}
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    console.log('🕐 [TaskForm Time Input] Changed:', {
+                      newValue,
+                      type: typeof newValue,
+                      length: newValue?.length,
+                      truthy: !!newValue,
+                      convertedToNull: newValue === '' ? null : newValue
+                    });
+                    // Convert empty string to null for consistent falsy checking
+                    setDueTime(newValue === '' ? null : newValue);
+                  }}
                   className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 />
               </div>
@@ -245,211 +304,6 @@ export default function TaskForm({ onAddTask, folders, selectedFolder, settings 
             </div>
           </div>
         </form>
-      )}
-
-      {/* AI Extract Mode */}
-      {showAI && (
-        <div className="space-y-3">
-          <div className="space-y-2">
-            {/* Input area with voice button */}
-            {!showAIVoice ? (
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <textarea
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder="Paste or type multiple tasks here... Example: 'Buy groceries, call dentist, finish report, and email team'"
-                    rows={4}
-                    className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400 dark:placeholder-gray-500 resize-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowAIVoice(true)}
-                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors self-start"
-                    title="Add tasks by voice"
-                  >
-                    🎤
-                  </button>
-                </div>
-
-                {/* Extract button */}
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleAIExtract}
-                    disabled={!input.trim() || isExtracting}
-                    className="px-6 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isExtracting ? 'Extracting...' : 'Extract Tasks'}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <VoiceInput onTranscript={handleAIVoiceTranscript} />
-                <button
-                  type="button"
-                  onClick={() => setShowAIVoice(false)}
-                  className="mt-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-white transition-colors text-sm"
-                >
-                  Back to Text
-                </button>
-              </div>
-            )}
-
-            {/* Folder and metadata selection */}
-            <div className="flex gap-2">
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600 dark:text-gray-400">
-                  Folder:
-                </label>
-                <select
-                  value={folder}
-                  onChange={(e) => setFolder(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                >
-                  {folders
-                    .filter((f) => f !== 'All Tasks')
-                    .map((f) => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600 dark:text-gray-400">
-                  Due:
-                </label>
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600 dark:text-gray-400">
-                  Priority:
-                </label>
-                <select
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Extracted tasks preview */}
-          {extractedTasks.length > 0 && (
-            <div className="p-4 border-2 border-purple-300 dark:border-purple-700 rounded-lg bg-purple-50 dark:bg-purple-900/20">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="font-medium text-gray-900 dark:text-white">
-                  Extracted Tasks ({extractedTasks.length})
-                </h3>
-                <button
-                  onClick={handleAddExtractedTasks}
-                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 font-medium transition-colors text-sm"
-                >
-                  Add All Tasks
-                </button>
-              </div>
-
-              <div className="space-y-2">
-                {extractedTasks.map((taskItem, index) => (
-                  <div
-                    key={index}
-                    className="p-3 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 space-y-2"
-                  >
-                    <div className="text-gray-900 dark:text-white text-sm font-medium">
-                      {taskItem.task}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      {/* Folder */}
-                      <div>
-                        <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">
-                          Folder:
-                        </label>
-                        <select
-                          value={taskItem.folder || 'Personal'}
-                          onChange={(e) => handleUpdateExtractedTaskFolder(index, e.target.value)}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-                          {folders
-                            .filter((f) => f !== 'All Tasks')
-                            .map((f) => (
-                              <option key={f} value={f}>
-                                {f}
-                              </option>
-                            ))}
-                        </select>
-                        {taskItem.folder && (
-                          <span className="text-xs text-green-600 dark:text-green-400 mt-1 block">
-                            ✓ Auto-detected
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Due Date */}
-                      <div>
-                        <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">
-                          Due Date:
-                        </label>
-                        <input
-                          type="date"
-                          value={taskItem.dueDate || ''}
-                          onChange={(e) => handleUpdateExtractedTaskDate(index, e.target.value || null)}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                        {taskItem.dueDate && (
-                          <span className="text-xs text-green-600 dark:text-green-400 mt-1 block">
-                            ✓ Auto-detected
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Due Time */}
-                      <div>
-                        <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">
-                          Due Time:
-                        </label>
-                        <input
-                          type="time"
-                          value={taskItem.dueTime || ''}
-                          onChange={(e) => handleUpdateExtractedTaskTime(index, e.target.value || null)}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                        {taskItem.dueTime && (
-                          <span className="text-xs text-green-600 dark:text-green-400 mt-1 block">
-                            ✓ Auto-detected
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Remove Button */}
-                      <div className="flex items-end">
-                        <button
-                          onClick={() => handleRemoveExtractedTask(index)}
-                          className="w-full px-2 py-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded text-xs border border-red-300 dark:border-red-700"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
       )}
 
       {/* Voice Input */}

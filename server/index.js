@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const nodemailer = require('nodemailer');
 require('dotenv').config({ path: './server/.env' });
 
 const app = express();
@@ -120,9 +121,114 @@ app.post('/api/extract-tasks', async (req, res) => {
   }
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Task Assistant Backend running on http://localhost:${PORT}`);
+// Email notification endpoint
+app.post('/api/send-email', async (req, res) => {
+  try {
+    const { to, subject, taskDetails } = req.body;
+
+    if (!to || !taskDetails) {
+      return res.status(400).json({ error: 'Email and task details are required' });
+    }
+
+    // Configure email transporter (using Gmail as example)
+    // Users need to configure EMAIL_USER and EMAIL_PASSWORD in .env
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD, // App-specific password for Gmail
+      },
+    });
+
+    // Email HTML content
+    const emailHTML = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #2563eb;">📋 Task Reminder</h2>
+        <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="margin-top: 0;">${taskDetails.task}</h3>
+          ${taskDetails.dueDate ? `<p><strong>Due Date:</strong> ${taskDetails.dueDate}</p>` : ''}
+          ${taskDetails.dueTime ? `<p><strong>Due Time:</strong> ${taskDetails.dueTime}</p>` : ''}
+          ${taskDetails.folder ? `<p><strong>Folder:</strong> ${taskDetails.folder}</p>` : ''}
+        </div>
+        <p style="color: #6b7280; font-size: 14px;">
+          This is an automated reminder from your Task Assistant.
+        </p>
+      </div>
+    `;
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: to,
+      subject: subject || `Task Reminder: ${taskDetails.task}`,
+      html: emailHTML,
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    console.log(`✅ [EMAIL] Sent to ${to}`);
+    res.json({ success: true, message: 'Email sent successfully' });
+
+  } catch (error) {
+    console.error('❌ [EMAIL] Error:', error.message);
+    res.status(500).json({
+      error: 'Failed to send email',
+      details: error.message
+    });
+  }
+});
+
+// SMS notification endpoint (Twilio)
+app.post('/api/send-sms', async (req, res) => {
+  try {
+    const { to, message } = req.body;
+
+    if (!to || !message) {
+      return res.status(400).json({ error: 'Phone number and message are required' });
+    }
+
+    // Check if Twilio is configured
+    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_PHONE_NUMBER) {
+      return res.status(500).json({
+        error: 'Twilio is not configured. Please add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER to server/.env'
+      });
+    }
+
+    // Dynamically import Twilio (only if configured)
+    let twilio;
+    try {
+      twilio = require('twilio');
+    } catch (e) {
+      return res.status(500).json({
+        error: 'Twilio package not installed. Run: cd server && npm install twilio'
+      });
+    }
+
+    const client = twilio(
+      process.env.TWILIO_ACCOUNT_SID,
+      process.env.TWILIO_AUTH_TOKEN
+    );
+
+    await client.messages.create({
+      body: message,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: to
+    });
+
+    console.log(`✅ [SMS] Sent to ${to}`);
+    res.json({ success: true, message: 'SMS sent successfully' });
+
+  } catch (error) {
+    console.error('❌ [SMS] Error:', error.message);
+    res.status(500).json({
+      error: 'Failed to send SMS',
+      details: error.message
+    });
+  }
+});
+
+// Start server - bind to 127.0.0.1 (IPv4) explicitly to avoid permission issues
+app.listen(PORT, '127.0.0.1', () => {
+  console.log(`🚀 Task Assistant Backend running on http://127.0.0.1:${PORT}`);
   console.log(`✅ CORS enabled for http://localhost:3000`);
-  console.log(`📡 Ready to proxy HuggingFace API requests`);
+  console.log(`📡 Ready to proxy OpenAI API requests`);
 });
