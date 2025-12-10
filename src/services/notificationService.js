@@ -38,21 +38,45 @@ class NotificationService {
    * Show a desktop notification
    */
   showNotification(title, options = {}) {
-    if (!this.hasPermission || Notification.permission !== 'granted') {
-      console.log('Notification permission not granted');
+    // Check browser permission directly (more reliable than hasPermission flag)
+    if (!('Notification' in window)) {
+      console.warn('❌ [NOTIFICATION] Browser does not support notifications');
       return;
     }
 
-    const notification = new Notification(title, {
-      icon: '/logo192.png',
-      badge: '/logo192.png',
-      ...options,
-    });
+    if (Notification.permission !== 'granted') {
+      console.warn('❌ [NOTIFICATION] Permission not granted. Current status:', Notification.permission);
+      return;
+    }
 
-    // Auto-close after 5 seconds
-    setTimeout(() => notification.close(), 5000);
+    console.log('✅ [NOTIFICATION] Showing notification:', title);
+    console.log('🔊 [NOTIFICATION] Playing notification sound...');
 
-    return notification;
+    // ALWAYS play sound when notification shows
+    this.playNotificationSound();
+
+    try {
+      const notification = new Notification(title, {
+        icon: '/logo192.png',
+        badge: '/logo192.png',
+        requireInteraction: true, // Notification stays until user dismisses it
+        tag: 'task-notification', // Prevents duplicate notifications
+        silent: false, // Ensure system sound plays
+        ...options,
+      });
+
+      console.log('✅ [NOTIFICATION] Notification object created successfully');
+
+      // Optional: Auto-close after 20 seconds instead of 5
+      setTimeout(() => {
+        notification.close();
+        console.log('🔕 [NOTIFICATION] Auto-closed after 20 seconds');
+      }, 20000);
+
+      return notification;
+    } catch (error) {
+      console.error('❌ [NOTIFICATION] Error showing notification:', error);
+    }
   }
 
   /**
@@ -101,9 +125,12 @@ class NotificationService {
    * Notify about a task
    */
   notifyTask(task, type = 'info') {
+    console.log(`📢 [NOTIFICATION] notifyTask called - Task: "${task.text}", Type: ${type}`);
+
     const titles = {
       overdue: '⚠️ Task Overdue',
       due_soon: '⏰ Task Due Soon',
+      task_starting: '🔔 Task Starting Now!',
       completed: '✓ Task Completed',
       created: '+ New Task Added',
       info: 'ℹ️ Task Notification',
@@ -112,12 +139,18 @@ class NotificationService {
     const title = titles[type] || titles.info;
     const body = task.text || 'Task notification';
 
+    console.log(`📢 [NOTIFICATION] Attempting to show notification: "${title}" - "${body}"`);
+
+    // Show notification (sound will play inside showNotification)
     this.showNotification(title, { body });
 
-    if (type === 'completed') {
-      this.playNotificationSound();
-    } else if (type === 'overdue') {
-      this.playSound(600, 300); // Lower, longer sound for urgency
+    // Play additional sounds for specific types
+    if (type === 'overdue') {
+      console.log('🔊 [NOTIFICATION] Playing OVERDUE sound (low beep)');
+      setTimeout(() => this.playSound(600, 300), 200); // Lower, longer sound for urgency
+    } else if (type === 'task_starting') {
+      console.log('🔊 [NOTIFICATION] Playing TASK STARTING sound (high beep)');
+      setTimeout(() => this.playSound(1200, 250), 200); // Higher pitch for "starting now"
     }
   }
 
@@ -156,12 +189,18 @@ class NotificationService {
   }
 
   /**
-   * Schedule a notification for a specific time
+   * Schedule DUAL notifications: 5 minutes before due time AND at exact due time
    * @param {Object} task - The task to notify about
    * @param {Object} settings - User settings (optional, for multi-channel)
    */
   scheduleNotification(task, settings = null) {
-    if (!task.dueDate || !task.dueTime) return;
+    console.log(`⏰ [SCHEDULE] scheduleNotification called for task: "${task.text}"`);
+    console.log(`⏰ [SCHEDULE] Task details:`, { dueDate: task.dueDate, dueTime: task.dueTime, id: task.id });
+
+    if (!task.dueDate || !task.dueTime) {
+      console.warn(`⚠️ [SCHEDULE] Skipping - task missing date or time`);
+      return;
+    }
 
     // Parse the due date and time
     const [year, month, day] = task.dueDate.split('-');
@@ -176,46 +215,107 @@ class NotificationService {
     );
 
     const now = new Date();
-    const msUntilDue = dueDateTime.getTime() - now.getTime();
 
-    // Only schedule if in the future and within 24 hours
-    if (msUntilDue > 0 && msUntilDue < 24 * 60 * 60 * 1000) {
-      console.log(`Scheduling notification for task "${task.text}" in ${Math.round(msUntilDue / 1000)} seconds`);
+    // Calculate BOTH notification times
+    const earlyNotificationTime = new Date(dueDateTime.getTime() - 5 * 60 * 1000); // 5 min before
+    const exactNotificationTime = dueDateTime; // Exact due time
 
-      const timeoutId = setTimeout(() => {
+    const msUntilEarlyNotification = earlyNotificationTime.getTime() - now.getTime();
+    const msUntilExactNotification = exactNotificationTime.getTime() - now.getTime();
+
+    console.log(`⏰ [SCHEDULE] Due time: ${dueDateTime.toLocaleString()}`);
+    console.log(`⏰ [SCHEDULE] Early warning time: ${earlyNotificationTime.toLocaleString()} (5 min before) - in ${Math.round(msUntilEarlyNotification / 1000)}s`);
+    console.log(`⏰ [SCHEDULE] Exact time notification: ${exactNotificationTime.toLocaleString()} (at due time) - in ${Math.round(msUntilExactNotification / 1000)}s`);
+
+    const timeouts = {};
+
+    // Schedule FIRST notification: 5 minutes before (within 24 hours and in future)
+    if (msUntilEarlyNotification > 0 && msUntilEarlyNotification < 24 * 60 * 60 * 1000) {
+      console.log(`✅ [SCHEDULE] Scheduling EARLY WARNING for task "${task.text}" in ${Math.round(msUntilEarlyNotification / 1000)} seconds (5 minutes before)`);
+
+      timeouts.earlyWarning = setTimeout(() => {
+        console.log(`🔔 [SCHEDULE] EARLY WARNING TRIGGERED (5 min before) for task: "${task.text}"`);
         if (settings) {
-          // Multi-channel notification
           this.sendMultiChannelNotification(task, settings);
         } else {
-          // Browser-only notification (backward compatible)
           this.notifyTask(task, 'due_soon');
         }
-        this.scheduledNotifications.delete(task.id);
-      }, msUntilDue);
+      }, msUntilEarlyNotification);
+    } else {
+      if (msUntilEarlyNotification <= 0) {
+        console.warn(`⚠️ [SCHEDULE] Cannot schedule early warning - time has passed (${Math.round(msUntilEarlyNotification / 1000)}s ago)`);
+      } else {
+        console.warn(`⚠️ [SCHEDULE] Cannot schedule early warning - more than 24 hours away`);
+      }
+    }
 
-      // Store the timeout ID so we can cancel it later
-      this.scheduledNotifications.set(task.id, timeoutId);
+    // Schedule SECOND notification: at exact due time (within 24 hours and in future)
+    if (msUntilExactNotification > 0 && msUntilExactNotification < 24 * 60 * 60 * 1000) {
+      console.log(`✅ [SCHEDULE] Scheduling EXACT TIME notification for task "${task.text}" in ${Math.round(msUntilExactNotification / 1000)} seconds (at due time)`);
+
+      timeouts.exactTime = setTimeout(() => {
+        console.log(`🔔 [SCHEDULE] EXACT TIME NOTIFICATION TRIGGERED (at due time) for task: "${task.text}"`);
+        if (settings) {
+          this.sendMultiChannelNotification(task, settings);
+        } else {
+          this.notifyTask(task, 'task_starting');
+        }
+      }, msUntilExactNotification);
+    } else {
+      if (msUntilExactNotification <= 0) {
+        console.warn(`⚠️ [SCHEDULE] Cannot schedule exact time notification - time has passed (${Math.round(msUntilExactNotification / 1000)}s ago)`);
+      } else {
+        console.warn(`⚠️ [SCHEDULE] Cannot schedule exact time notification - more than 24 hours away`);
+      }
+    }
+
+    // Store BOTH timeout IDs (or just the ones we scheduled)
+    if (timeouts.earlyWarning || timeouts.exactTime) {
+      this.scheduledNotifications.set(task.id, timeouts);
+      console.log(`✅ [SCHEDULE] Stored ${Object.keys(timeouts).length} notification(s) for task ${task.id}`);
     }
   }
 
   /**
-   * Cancel scheduled notification for a task
+   * Cancel scheduled notifications for a task (both early warning and exact time)
    */
   cancelScheduledNotification(taskId) {
-    const timeoutId = this.scheduledNotifications.get(taskId);
-    if (timeoutId) {
-      clearTimeout(timeoutId);
+    const timeouts = this.scheduledNotifications.get(taskId);
+    if (timeouts) {
+      // Handle both old format (single timeout ID) and new format (object with multiple timeouts)
+      if (typeof timeouts === 'object' && !timeouts._id) {
+        // New format - object with earlyWarning and exactTime properties
+        if (timeouts.earlyWarning) {
+          clearTimeout(timeouts.earlyWarning);
+          console.log(`Cancelled early warning notification for task ${taskId}`);
+        }
+        if (timeouts.exactTime) {
+          clearTimeout(timeouts.exactTime);
+          console.log(`Cancelled exact time notification for task ${taskId}`);
+        }
+      } else {
+        // Old format - single timeout ID (backward compatibility)
+        clearTimeout(timeouts);
+        console.log(`Cancelled notification for task ${taskId}`);
+      }
       this.scheduledNotifications.delete(taskId);
-      console.log(`Cancelled notification for task ${taskId}`);
     }
   }
 
   /**
-   * Clear all scheduled notifications
+   * Clear all scheduled notifications (both early warning and exact time)
    */
   clearAllScheduled() {
-    this.scheduledNotifications.forEach((timeoutId) => {
-      clearTimeout(timeoutId);
+    this.scheduledNotifications.forEach((timeouts) => {
+      // Handle both old format (single timeout ID) and new format (object with multiple timeouts)
+      if (typeof timeouts === 'object' && !timeouts._id) {
+        // New format - object with earlyWarning and exactTime properties
+        if (timeouts.earlyWarning) clearTimeout(timeouts.earlyWarning);
+        if (timeouts.exactTime) clearTimeout(timeouts.exactTime);
+      } else {
+        // Old format - single timeout ID
+        clearTimeout(timeouts);
+      }
     });
     this.scheduledNotifications.clear();
   }

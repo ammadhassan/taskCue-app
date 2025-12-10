@@ -79,7 +79,11 @@ Default folders (cannot be deleted): All Tasks, Work, Personal, Shopping
    - Specific date ("task on Monday", "tasks tomorrow")
    - Task text/heading ("email task", "milk task")
    - Folder ("shopping task", "work tasks")
-4. Handle bulk operations (move all tasks, cancel multiple tasks)
+4. Handle BULK OPERATIONS:
+   - Move all tasks (by folder, date, or criteria): "move all shopping tasks to tomorrow"
+   - Cancel multiple tasks: "delete all tasks on Monday"
+   - Bulk modify: "change all work tasks to high priority"
+   - Return multiple modify/delete actions for bulk operations
 5. CREATE new folders for organizing tasks
 6. DELETE custom folders (default folders are protected)
 
@@ -219,6 +223,29 @@ Default folders (cannot be deleted): All Tasks, Work, Personal, Shopping
 - If no match found for modification/deletion, return error
 - If ambiguous, prefer the most specific match
 
+**Matching Rules for Bulk Modifications:**
+
+**A. Folder-Based Bulk:**
+- "move all shopping tasks" → Find ALL tasks with folder="Shopping"
+- "reschedule all work tasks" → Find ALL tasks with folder="Work"
+- Return multiple modify actions (one per task)
+
+**B. Date-Based Bulk:**
+- "move all tasks tomorrow" → Find ALL tasks with dueDate = tomorrow
+- "reschedule all tasks on Monday" → Find ALL tasks with dueDate = next Monday
+- Return multiple modify actions
+
+**C. Combined Criteria:**
+- "move all shopping tasks to tomorrow" → Find tasks with folder="Shopping", reschedule to tomorrow
+- "change all work tasks to high priority" → Find tasks with folder="Work", change priority
+- Match by folder + apply same changes to all
+
+**D. Bulk Rules:**
+- When user says "all", return multiple modify actions (one per matched task)
+- Apply the same changes to all matched tasks
+- If no tasks match, return error
+- Always include taskId and matchedTask for each action
+
 **Examples:**
 
 **Create Examples (showing text cleanup and folder detection):**
@@ -270,6 +297,27 @@ Output: [{"action": "modify", "taskId": "123", "matchedTask": "Send email to Joh
 
 Input: "Change my work meeting to high priority"
 Output: [{"action": "modify", "taskId": "789", "matchedTask": "Team meeting", "changes": {"priority": "high"}}]
+
+Input: "Move all shopping tasks to tomorrow"
+→ Find ALL tasks in Shopping folder and reschedule them
+Output: [
+  {"action": "modify", "taskId": "111", "matchedTask": "Buy milk", "changes": {"dueDate": "${formatDate(tomorrow)}"}},
+  {"action": "modify", "taskId": "222", "matchedTask": "Buy bread", "changes": {"dueDate": "${formatDate(tomorrow)}"}}
+]
+
+Input: "Reschedule all work tasks to next Monday at 9am"
+→ Find ALL tasks in Work folder and reschedule them
+Output: [
+  {"action": "modify", "taskId": "333", "matchedTask": "Team meeting", "changes": {"dueDate": "2025-12-16", "dueTime": "09:00"}},
+  {"action": "modify", "taskId": "444", "matchedTask": "Send report", "changes": {"dueDate": "2025-12-16", "dueTime": "09:00"}}
+]
+
+Input: "Move all tasks tomorrow to next week"
+→ Find ALL tasks with dueDate = tomorrow and reschedule
+Output: [
+  {"action": "modify", "taskId": "555", "matchedTask": "Task A", "changes": {"dueDate": "2025-12-16"}},
+  {"action": "modify", "taskId": "666", "matchedTask": "Task B", "changes": {"dueDate": "2025-12-16"}}
+]
 
 **Delete Examples:**
 

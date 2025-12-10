@@ -75,26 +75,50 @@ function App() {
 
   // Initialize notifications
   useEffect(() => {
+    console.log('🔧 [APP] Initializing notifications. Settings:', {
+      notifications: settings.notifications,
+      desktopNotifications: settings.desktopNotifications,
+      soundAlerts: settings.soundAlerts
+    });
+
     if (settings.notifications && settings.desktopNotifications) {
-      notificationService.requestPermission();
+      console.log('🔔 [APP] Requesting notification permission...');
+      notificationService.requestPermission().then((granted) => {
+        console.log(`🔔 [APP] Permission ${granted ? 'GRANTED ✅' : 'DENIED ❌'}`);
+      });
+    } else {
+      console.log('⚠️ [APP] Notifications disabled in settings');
     }
+
     notificationService.setSoundEnabled(settings.soundAlerts !== false);
   }, [settings.notifications, settings.desktopNotifications, settings.soundAlerts]);
 
   // Restore scheduled notifications on app load
   useEffect(() => {
-    if (!settings.notifications) return;
+    console.log('🔄 [APP] Restoring scheduled notifications on app load...');
+    console.log(`🔄 [APP] Total tasks: ${tasks.length}, Notifications enabled: ${settings.notifications}`);
+
+    if (!settings.notifications) {
+      console.log('⚠️ [APP] Notifications disabled - skipping restoration');
+      return;
+    }
 
     // Loop through all incomplete tasks with due date and time
+    let scheduledCount = 0;
     tasks.forEach((task) => {
       if (!task.completed && task.dueDate && task.dueTime) {
+        console.log(`🔄 [APP] Restoring notification for task: "${task.text}"`);
         // Re-schedule notification for this task (with settings for multi-channel)
         notificationService.scheduleNotification(task, settings);
+        scheduledCount++;
       }
     });
 
+    console.log(`✅ [APP] Restored ${scheduledCount} notifications`);
+
     // Cleanup: cancel all scheduled notifications when component unmounts
     return () => {
+      console.log('🧹 [APP] Cleaning up scheduled notifications...');
       notificationService.clearAllScheduled();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,9 +166,16 @@ function App() {
     setTasks(prevTasks => {
       const updatedTasks = [newTask, ...prevTasks];
 
+      console.log(`🔔 [APP] Task added. Checking if notification should be scheduled...`);
+      console.log(`🔔 [APP] Notifications enabled: ${settings.notifications}`);
+      console.log(`🔔 [APP] Task has date: ${!!newTask.dueDate}, has time: ${!!newTask.dueTime}`);
+
       // Schedule notification if task has time and notifications are enabled
       if (settings.notifications && newTask.dueDate && newTask.dueTime) {
+        console.log(`🔔 [APP] Scheduling notification for new task: "${newTask.text}"`);
         notificationService.scheduleNotification(newTask, settings);
+      } else {
+        console.log(`⚠️ [APP] NOT scheduling notification (notifications: ${settings.notifications}, hasDate: ${!!newTask.dueDate}, hasTime: ${!!newTask.dueTime})`);
       }
 
       // Also trigger immediate check for overdue/upcoming tasks
