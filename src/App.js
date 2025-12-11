@@ -3,7 +3,13 @@ import './App.css';
 import TaskForm from './components/TaskForm';
 import TaskList from './components/TaskList';
 import SettingsModal from './components/SettingsModal';
-import FolderSidebar from './components/FolderSidebar';
+import DashboardHeader from './components/DashboardHeader';
+import ProductivityChart from './components/ProductivityChart';
+import PriorityBreakdown from './components/PriorityBreakdown';
+import TodaysFocus from './components/TodaysFocus';
+import QuickActions from './components/QuickActions';
+import ViewTabs from './components/ViewTabs';
+import CalendarView from './components/CalendarView';
 import { notificationService } from './services/notificationService';
 import { exportAllTasksToCalendar, exportFolderToCalendar } from './services/calendarService';
 
@@ -39,6 +45,7 @@ function App() {
   const [selectedFolder, setSelectedFolder] = useState('All Tasks');
   const [showSettings, setShowSettings] = useState(false);
   const [sortBy, setSortBy] = useState('createdAt'); // 'createdAt', 'dueDate', 'priority'
+  const [currentView, setCurrentView] = useState('list'); // 'list' or 'calendar'
 
   // Save tasks to localStorage whenever they change
   useEffect(() => {
@@ -178,10 +185,8 @@ function App() {
         console.log(`⚠️ [APP] NOT scheduling notification (notifications: ${settings.notifications}, hasDate: ${!!newTask.dueDate}, hasTime: ${!!newTask.dueTime})`);
       }
 
-      // Also trigger immediate check for overdue/upcoming tasks
-      if (settings.notifications) {
-        notificationService.checkTasks(updatedTasks);
-      }
+      // NOTE: Removed immediate checkTasks() call here to prevent unexpected sounds when adding tasks.
+      // The periodic check (every 30 min) and scheduled notifications will handle reminders.
 
       return updatedTasks;
     });
@@ -192,10 +197,8 @@ function App() {
       tasks.map((task) => {
         if (task.id === id) {
           const updatedTask = { ...task, completed: !task.completed };
-          // Notify on completion
-          if (updatedTask.completed && settings.notifications) {
-            notificationService.notifyTask(updatedTask, 'completed');
-            // Cancel scheduled notification since task is completed
+          // Cancel scheduled notification when task is completed (no completion sound)
+          if (updatedTask.completed) {
             notificationService.cancelScheduledNotification(id);
           }
           return updatedTask;
@@ -295,97 +298,145 @@ function App() {
   });
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors flex">
-      {/* Folder Sidebar */}
-      <FolderSidebar
-        folders={folders}
-        selectedFolder={selectedFolder}
-        onSelectFolder={setSelectedFolder}
-        onAddFolder={addFolder}
-        onDeleteFolder={deleteFolder}
-        tasks={tasks}
-      />
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 transition-colors">
+      <div className="max-w-7xl mx-auto p-4 md:p-6">
+        {/* Dashboard Header */}
+        <DashboardHeader
+          tasks={tasks}
+          onSettingsClick={() => setShowSettings(true)}
+          onExportClick={handleExportToCalendar}
+        />
 
-      {/* Main Content */}
-      <div className="flex-1 p-6">
-        <div className="max-w-4xl mx-auto">
-          {/* Header */}
-          <div className="flex justify-between items-center mb-8">
-            <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
-              Task Assistant
-            </h1>
-            <div className="flex gap-3">
-              <button
-                onClick={handleExportToCalendar}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-                title="Export tasks to calendar"
-              >
-                📅 Export to Calendar
-              </button>
-              <button
-                onClick={() => setShowSettings(true)}
-                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-              >
-                Settings
-              </button>
+        {/* HERO: Task Input Section - Elegant & Prominent */}
+        <div className="mb-8">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg border-l-4 border-blue-500 dark:border-blue-400 hover:shadow-xl transition-shadow duration-300">
+            {/* Header */}
+            <div className="mb-6">
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2">
+                Add New Task
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400 text-sm md:text-base">
+                Type naturally, use voice input, or let AI extract tasks from your message
+              </p>
             </div>
+
+            {/* Task Form */}
+            <TaskForm
+              onAddTask={addTask}
+              folders={folders}
+              selectedFolder={selectedFolder}
+              settings={settings}
+              tasks={tasks}
+              onModifyTask={modifyTask}
+              onDeleteTask={deleteTask}
+              onAddFolder={addFolder}
+              onDeleteFolder={deleteFolder}
+            />
           </div>
-
-          {/* Task Form */}
-          <TaskForm
-            onAddTask={addTask}
-            folders={folders}
-            selectedFolder={selectedFolder}
-            settings={settings}
-            tasks={tasks}
-            onModifyTask={modifyTask}
-            onDeleteTask={deleteTask}
-            onAddFolder={addFolder}
-            onDeleteFolder={deleteFolder}
-          />
-
-          {/* Task Stats */}
-          <div className="mb-4 flex items-center justify-between">
-            <div className="text-sm text-gray-600 dark:text-gray-400">
-              {filteredTasks.filter((t) => !t.completed).length} active ·{' '}
-              {filteredTasks.filter((t) => t.completed).length} completed ·{' '}
-              {filteredTasks.length} total
-            </div>
-
-            {/* Sort Dropdown */}
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600 dark:text-gray-400">
-                Sort by:
-              </label>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="createdAt">Created Date</option>
-                <option value="dueDate">Due Date</option>
-                <option value="priority">Priority</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Task List */}
-          <TaskList
-            tasks={sortedTasks}
-            onToggle={toggleTask}
-            onDelete={deleteTask}
-            onModify={modifyTask}
-            folders={folders}
-          />
-
-          {/* Settings Modal */}
-          <SettingsModal
-            isOpen={showSettings}
-            onClose={() => setShowSettings(false)}
-            settings={settings}
-            onSave={saveSettings}
-          />
         </div>
+
+        {/* Main Dashboard Grid - 3 columns on desktop, stacked on mobile */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Left Sidebar - Quick Actions & Today's Focus */}
+          <div className="lg:col-span-3 space-y-6">
+            {/* Quick Actions */}
+            <QuickActions
+              folders={folders}
+              selectedFolder={selectedFolder}
+              onSelectFolder={setSelectedFolder}
+            />
+
+            {/* Today's Focus */}
+            <TodaysFocus
+              tasks={tasks}
+              onToggle={toggleTask}
+            />
+          </div>
+
+          {/* Center Column - Task List */}
+          <div className="lg:col-span-6 space-y-6">
+            {/* Task List Header with View Tabs */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-md">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                    {selectedFolder}
+                  </h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    {filteredTasks.filter((t) => !t.completed).length} active ·{' '}
+                    {filteredTasks.filter((t) => t.completed).length} completed ·{' '}
+                    {filteredTasks.length} total
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  {/* View Tabs */}
+                  <ViewTabs activeView={currentView} onViewChange={setCurrentView} />
+
+                  {/* Sort Dropdown (only show in list view) */}
+                  {currentView === 'list' && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm text-gray-600 dark:text-gray-400">
+                        Sort:
+                      </label>
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="createdAt">Created</option>
+                        <option value="dueDate">Due Date</option>
+                        <option value="priority">Priority</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Conditional View Rendering */}
+            {currentView === 'list' ? (
+              /* List View */
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-md">
+                <TaskList
+                  tasks={sortedTasks}
+                  onToggle={toggleTask}
+                  onDelete={deleteTask}
+                  onModify={modifyTask}
+                  folders={folders}
+                />
+              </div>
+            ) : (
+              /* Calendar View */
+              <CalendarView
+                tasks={filteredTasks}
+                onToggle={toggleTask}
+                onDelete={deleteTask}
+                onModify={modifyTask}
+                onAddTask={addTask}
+                folders={folders}
+                selectedFolder={selectedFolder}
+              />
+            )}
+          </div>
+
+          {/* Right Sidebar - Analytics & Charts */}
+          <div className="lg:col-span-3 space-y-6">
+            {/* Priority Breakdown */}
+            <PriorityBreakdown tasks={tasks} />
+
+            {/* Productivity Chart */}
+            <ProductivityChart tasks={tasks} />
+          </div>
+        </div>
+
+        {/* Settings Modal */}
+        <SettingsModal
+          isOpen={showSettings}
+          onClose={() => setShowSettings(false)}
+          settings={settings}
+          onSave={saveSettings}
+        />
       </div>
     </div>
   );

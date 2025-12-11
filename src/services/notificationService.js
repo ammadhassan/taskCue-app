@@ -9,6 +9,36 @@ class NotificationService {
     this.soundEnabled = true;
     this.audioContext = null;
     this.scheduledNotifications = new Map(); // Store timeout IDs
+    this.notifiedTasks = new Map(); // Track which tasks have been notified today
+    this.lastResetDate = new Date().toDateString(); // Track when we last reset
+  }
+
+  /**
+   * Reset notification tracking daily
+   */
+  resetDailyTracking() {
+    const today = new Date().toDateString();
+    if (this.lastResetDate !== today) {
+      console.log('🔄 [NOTIFICATION] Resetting daily notification tracking');
+      this.notifiedTasks.clear();
+      this.lastResetDate = today;
+    }
+  }
+
+  /**
+   * Check if a task has already been notified
+   */
+  hasBeenNotified(taskId, notificationType) {
+    const key = `${taskId}_${notificationType}`;
+    return this.notifiedTasks.has(key);
+  }
+
+  /**
+   * Mark a task as notified
+   */
+  markAsNotified(taskId, notificationType) {
+    const key = `${taskId}_${notificationType}`;
+    this.notifiedTasks.set(key, Date.now());
   }
 
   /**
@@ -158,11 +188,16 @@ class NotificationService {
    * Check for overdue and upcoming tasks
    */
   checkTasks(tasks) {
+    // Reset tracking if it's a new day
+    this.resetDailyTracking();
+
     const now = new Date();
     now.setHours(0, 0, 0, 0);
 
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
+
+    let notifiedCount = 0;
 
     tasks.forEach((task) => {
       if (task.completed || !task.dueDate) return;
@@ -170,15 +205,27 @@ class NotificationService {
       const dueDate = new Date(task.dueDate);
       dueDate.setHours(0, 0, 0, 0);
 
-      // Overdue
+      // Overdue - only notify if not already notified today
       if (dueDate < now) {
-        this.notifyTask(task, 'overdue');
+        if (!this.hasBeenNotified(task.id, 'overdue')) {
+          this.notifyTask(task, 'overdue');
+          this.markAsNotified(task.id, 'overdue');
+          notifiedCount++;
+        }
       }
-      // Due today or tomorrow
+      // Due today or tomorrow - only notify if not already notified today
       else if (dueDate <= tomorrow) {
-        this.notifyTask(task, 'due_soon');
+        if (!this.hasBeenNotified(task.id, 'due_soon')) {
+          this.notifyTask(task, 'due_soon');
+          this.markAsNotified(task.id, 'due_soon');
+          notifiedCount++;
+        }
       }
     });
+
+    if (notifiedCount > 0) {
+      console.log(`🔔 [NOTIFICATION] Sent ${notifiedCount} new notifications`);
+    }
   }
 
   /**
