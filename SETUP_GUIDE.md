@@ -41,7 +41,14 @@ I've prepared all the documentation and next steps for you. Here's what you need
 3. Copy entire contents of `SUPABASE_SCHEMA.sql` file
 4. Paste into SQL editor
 5. Click "Run" (or press Cmd/Ctrl + Enter)
-6. Verify success: Should see "Success. No rows returned"
+6. **IMPORTANT:** If you see error "must be owner of table users", this has been fixed! The updated SQL file removes problematic triggers on auth.users.
+7. Verify success: Should see "Success. No rows returned"
+8. Check output - should show 3 tables created: `tasks`, `folders`, `settings`
+
+**Common Issues:**
+- If you see permission errors, make sure you copied the LATEST `SUPABASE_SCHEMA.sql` file
+- The schema no longer tries to modify `auth.users` (Supabase system table)
+- Default folders and settings will be created by the app, not database triggers
 
 ### Step 4: Get API Credentials
 1. Go to **Settings → API** (left sidebar)

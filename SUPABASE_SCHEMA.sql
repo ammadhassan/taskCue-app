@@ -4,8 +4,8 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Enable Row Level Security on auth.users
-ALTER TABLE IF EXISTS auth.users ENABLE ROW LEVEL SECURITY;
+-- NOTE: auth.users already has RLS enabled by Supabase
+-- We don't have permission to modify it, and don't need to
 
 -- ===================================
 -- TABLES
@@ -164,6 +164,8 @@ ALTER PUBLICATION supabase_realtime ADD TABLE folders;
 -- ===================================
 
 -- Function to create default folders for new users
+-- NOTE: This function exists but is called from application code, not a trigger
+-- Triggers on auth.users require special permissions we don't have
 CREATE OR REPLACE FUNCTION create_default_folders()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -177,18 +179,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger to create default folders when user signs up
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-    AFTER INSERT ON auth.users
-    FOR EACH ROW
-    EXECUTE FUNCTION create_default_folders();
+-- NOTE: We can't create triggers on auth.users due to permissions
+-- Instead, default folders will be created in the React app on first login
 
 -- ===================================
 -- INSERT DEFAULT SETTINGS FOR NEW USERS
 -- ===================================
 
 -- Function to create default settings for new users
+-- NOTE: This function exists but is called from application code, not a trigger
 CREATE OR REPLACE FUNCTION create_default_settings()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -199,12 +198,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger to create default settings when user signs up
-DROP TRIGGER IF EXISTS on_auth_user_created_settings ON auth.users;
-CREATE TRIGGER on_auth_user_created_settings
-    AFTER INSERT ON auth.users
-    FOR EACH ROW
-    EXECUTE FUNCTION create_default_settings();
+-- NOTE: We can't create triggers on auth.users due to permissions
+-- Instead, default settings will be created in the React app on first login
 
 -- ===================================
 -- VERIFICATION
