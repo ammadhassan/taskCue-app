@@ -1,5 +1,6 @@
 import { formatDateShort } from '../utils/dateHelpers';
 import { getTasksDueToday, getOverdueTasks, getCompletionRate } from '../utils/statistics';
+import { useAuth } from '../contexts/AuthContext';
 
 /**
  * DashboardHeader Component
@@ -7,12 +8,19 @@ import { getTasksDueToday, getOverdueTasks, getCompletionRate } from '../utils/s
  */
 
 export default function DashboardHeader({ tasks, onSettingsClick, onExportClick }) {
+  const { signOut } = useAuth();
   const today = new Date();
   const todayFormatted = formatDateShort(today.toISOString().split('T')[0]);
 
   const dueTodayCount = getTasksDueToday(tasks).length;
   const overdueCount = getOverdueTasks(tasks).length;
   const completionRate = getCompletionRate(tasks);
+
+  const handleLogout = async () => {
+    if (window.confirm('Are you sure you want to log out?')) {
+      await signOut();
+    }
+  };
 
   return (
     <div className="mb-8">
@@ -42,6 +50,14 @@ export default function DashboardHeader({ tasks, onSettingsClick, onExportClick 
             className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors shadow-md hover:shadow-lg"
           >
             Settings
+          </button>
+          <button
+            onClick={handleLogout}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-md hover:shadow-lg"
+            title="Log out"
+          >
+            <span className="hidden md:inline">Logout</span>
+            <span className="md:hidden">🚪</span>
           </button>
         </div>
       </div>

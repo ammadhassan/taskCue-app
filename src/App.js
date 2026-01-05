@@ -10,10 +10,41 @@ import TodaysFocus from './components/TodaysFocus';
 import QuickActions from './components/QuickActions';
 import ViewTabs from './components/ViewTabs';
 import CalendarView from './components/CalendarView';
+import LoadingSpinner from './components/LoadingSpinner';
+import Auth from './components/Auth';
+import { AuthContextProvider, useAuth } from './contexts/AuthContext';
 import { notificationService } from './services/notificationService';
 import { exportAllTasksToCalendar, exportFolderToCalendar } from './services/calendarService';
 
+// Main App wrapper with Auth Context
 function App() {
+  return (
+    <AuthContextProvider>
+      <AppContent />
+    </AuthContextProvider>
+  );
+}
+
+// App content - only shown when authenticated
+function AppContent() {
+  const { session, loading } = useAuth();
+
+  // Show loading spinner while checking authentication
+  if (loading) {
+    return <LoadingSpinner />;
+  }
+
+  // Show login page if not authenticated
+  if (!session) {
+    return <Auth />;
+  }
+
+  // Show main app if authenticated
+  return <MainApp />;
+}
+
+// Main application logic
+function MainApp() {
   // Load tasks from localStorage
   const [tasks, setTasks] = useState(() => {
     const saved = localStorage.getItem('tasks');
