@@ -15,6 +15,7 @@ import Auth from './components/Auth';
 import { AuthContextProvider, useAuth } from './contexts/AuthContext';
 import { notificationService } from './services/notificationService';
 import { exportAllTasksToCalendar, exportFolderToCalendar } from './services/calendarService';
+import * as dataService from './services/dataService';
 
 // Main App wrapper with Auth Context
 function App() {
@@ -45,53 +46,91 @@ function AppContent() {
 
 // Main application logic
 function MainApp() {
-  // Load tasks from localStorage
-  const [tasks, setTasks] = useState(() => {
-    const saved = localStorage.getItem('tasks');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const { user } = useAuth();
 
-  // Load settings from localStorage
-  const [settings, setSettings] = useState(() => {
-    const saved = localStorage.getItem('settings');
-    return saved
-      ? JSON.parse(saved)
-      : {
-          notifications: true,
-          desktopNotifications: true,
-          soundAlerts: true,
-          theme: 'light',
-          defaultTiming: 'tomorrow_morning' // New setting for default date/time
-        };
+  // State for data from Supabase
+  const [tasks, setTasks] = useState([]);
+  const [settings, setSettings] = useState({
+    notifications: true,
+    desktopNotifications: true,
+    soundAlerts: true,
+    theme: 'light',
+    defaultTiming: 'tomorrow_morning'
   });
+  const [folders, setFolders] = useState(['All Tasks', 'Work', 'Personal', 'Shopping']);
 
-  // Load folders from localStorage
-  const [folders, setFolders] = useState(() => {
-    const saved = localStorage.getItem('folders');
-    return saved
-      ? JSON.parse(saved)
-      : ['All Tasks', 'Work', 'Personal', 'Shopping'];
-  });
+  // Loading state
+  const [dataLoading, setDataLoading] = useState(true);
 
   const [selectedFolder, setSelectedFolder] = useState('All Tasks');
   const [showSettings, setShowSettings] = useState(false);
   const [sortBy, setSortBy] = useState('createdAt'); // 'createdAt', 'dueDate', 'priority'
   const [currentView, setCurrentView] = useState('list'); // 'list' or 'calendar'
 
-  // Save tasks to localStorage whenever they change
+  // Fetch data from Supabase on mount
   useEffect(() => {
-    localStorage.setItem('tasks', JSON.stringify(tasks));
-  }, [tasks]);
+    async function loadData() {
+      if (!user?.id) return;
 
-  // Save settings to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem('settings', JSON.stringify(settings));
-  }, [settings]);
+      try {
+        setDataLoading(true);
 
-  // Save folders to localStorage whenever they change
+        // Fetch tasks, folders, and settings in parallel
+        const [tasksData, foldersData, settingsData] = await Promise.all([
+          dataService.fetchTasks(user.id),
+          dataService.fetchFolders(user.id),
+          dataService.fetchSettings(user.id),
+        ]);
+
+        setTasks(tasksData);
+        setFolders(foldersData);
+        setSettings(settingsData);
+
+        console.log('✅ Data loaded from Supabase:', {
+          tasks: tasksData.length,
+          folders: foldersData.length,
+          settings: settingsData
+        });
+      } catch (error) {
+        console.error('Error loading data:', error);
+        alert('Failed to load data. Please refresh the page.');
+      } finally {
+        setDataLoading(false);
+      }
+    }
+
+    loadData();
+  }, [user]);
+
+  // Subscribe to real-time updates
   useEffect(() => {
-    localStorage.setItem('folders', JSON.stringify(folders));
-  }, [folders]);
+    if (!user?.id) return;
+
+    console.log('🔄 Setting up real-time subscriptions...');
+
+    // Subscribe to task changes
+    const unsubscribeTasks = dataService.subscribeToTasks(user.id, (change) => {
+      if (change.type === 'INSERT') {
+        setTasks(prev => [change.task, ...prev]);
+      } else if (change.type === 'UPDATE') {
+        setTasks(prev => prev.map(t => t.id === change.task.id ? change.task : t));
+      } else if (change.type === 'DELETE') {
+        setTasks(prev => prev.filter(t => t.id !== change.taskId));
+      }
+    });
+
+    // Subscribe to folder changes
+    const unsubscribeFolders = dataService.subscribeToFolders(user.id, async () => {
+      // Refetch folders when they change
+      const foldersData = await dataService.fetchFolders(user.id);
+      setFolders(foldersData);
+    });
+
+    return () => {
+      unsubscribeTasks();
+      unsubscribeFolders();
+    };
+  }, [user]);
 
   // Apply theme
   useEffect(() => {
@@ -177,7 +216,7 @@ function MainApp() {
     return () => clearInterval(interval);
   }, [tasks, settings.notifications]);
 
-  const addTask = (text, folder = 'Personal', dueDate = null, priority = 'medium', dueTime = null) => {
+  const addTask = async (text, folder = 'Personal', dueDate = null, priority = 'medium', dueTime = null) => {
     // 🔍 DEBUG LOG
     console.log('➕ [App addTask] Called:', {
       text,
@@ -189,20 +228,18 @@ function MainApp() {
       timestamp: new Date().toISOString()
     });
 
-    const newTask = {
-      id: crypto.randomUUID(),
-      text,
-      folder,
-      dueDate,
-      dueTime,
-      priority,
-      completed: false,
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      // Create task in Supabase
+      const newTask = await dataService.createTask(user.id, {
+        text,
+        folder,
+        dueDate,
+        dueTime,
+        priority,
+      });
 
-    // Use functional update to avoid race condition when adding multiple tasks rapidly
-    setTasks(prevTasks => {
-      const updatedTasks = [newTask, ...prevTasks];
+      // Optimistically update UI
+      setTasks(prevTasks => [newTask, ...prevTasks]);
 
       console.log(`🔔 [APP] Task added. Checking if notification should be scheduled...`);
       console.log(`🔔 [APP] Notifications enabled: ${settings.notifications}`);
@@ -215,80 +252,161 @@ function MainApp() {
       } else {
         console.log(`⚠️ [APP] NOT scheduling notification (notifications: ${settings.notifications}, hasDate: ${!!newTask.dueDate}, hasTime: ${!!newTask.dueTime})`);
       }
-
-      // NOTE: Removed immediate checkTasks() call here to prevent unexpected sounds when adding tasks.
-      // The periodic check (every 30 min) and scheduled notifications will handle reminders.
-
-      return updatedTasks;
-    });
+    } catch (error) {
+      console.error('Error adding task:', error);
+      alert('Failed to add task. Please try again.');
+    }
   };
 
-  const toggleTask = (id) => {
-    setTasks(
-      tasks.map((task) => {
-        if (task.id === id) {
-          const updatedTask = { ...task, completed: !task.completed };
-          // Cancel scheduled notification when task is completed (no completion sound)
-          if (updatedTask.completed) {
-            notificationService.cancelScheduledNotification(id);
-          }
-          return updatedTask;
+  const toggleTask = async (id) => {
+    try {
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
+
+      const newCompleted = !task.completed;
+
+      // Optimistically update UI
+      setTasks(tasks.map((t) => t.id === id ? { ...t, completed: newCompleted } : t));
+
+      // Cancel scheduled notification when task is completed
+      if (newCompleted) {
+        notificationService.cancelScheduledNotification(id);
+      }
+
+      // Update in Supabase
+      await dataService.toggleTaskComplete(id, newCompleted);
+    } catch (error) {
+      console.error('Error toggling task:', error);
+      alert('Failed to update task. Please try again.');
+      // Revert optimistic update on error
+      const tasksData = await dataService.fetchTasks(user.id);
+      setTasks(tasksData);
+    }
+  };
+
+  const deleteTask = async (id) => {
+    try {
+      // Cancel scheduled notification when deleting
+      notificationService.cancelScheduledNotification(id);
+
+      // Optimistically remove from UI
+      setTasks(tasks.filter((task) => task.id !== id));
+
+      // Delete from Supabase
+      await dataService.deleteTask(id);
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      alert('Failed to delete task. Please try again.');
+      // Revert optimistic update on error
+      const tasksData = await dataService.fetchTasks(user.id);
+      setTasks(tasksData);
+    }
+  };
+
+  const modifyTask = async (id, changes) => {
+    try {
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
+
+      const updatedTask = { ...task, ...changes };
+
+      // Optimistically update UI
+      setTasks(tasks.map((t) => t.id === id ? updatedTask : t));
+
+      // If date or time changed, reschedule notification
+      if (settings.notifications && (changes.dueDate || changes.dueTime)) {
+        notificationService.cancelScheduledNotification(id);
+        if (updatedTask.dueDate && updatedTask.dueTime) {
+          notificationService.scheduleNotification(updatedTask, settings);
         }
-        return task;
-      })
-    );
+      }
+
+      // Update in Supabase
+      await dataService.updateTask(id, changes);
+    } catch (error) {
+      console.error('Error modifying task:', error);
+      alert('Failed to update task. Please try again.');
+      // Revert optimistic update on error
+      const tasksData = await dataService.fetchTasks(user.id);
+      setTasks(tasksData);
+    }
   };
 
-  const deleteTask = (id) => {
-    // Cancel scheduled notification when deleting
-    notificationService.cancelScheduledNotification(id);
-    setTasks(tasks.filter((task) => task.id !== id));
+  const saveSettings = async (newSettings) => {
+    try {
+      // Optimistically update UI
+      setSettings(newSettings);
+
+      // Save to Supabase
+      await dataService.updateSettings(user.id, newSettings);
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      alert('Failed to save settings. Please try again.');
+      // Revert on error
+      const settingsData = await dataService.fetchSettings(user.id);
+      setSettings(settingsData);
+    }
   };
 
-  const modifyTask = (id, changes) => {
-    setTasks(
-      tasks.map((task) => {
-        if (task.id === id) {
-          const updatedTask = { ...task, ...changes };
+  const addFolder = async (folderName) => {
+    if (!folderName.trim()) return;
+    if (folders.includes(folderName.trim())) {
+      alert('A folder with this name already exists');
+      return;
+    }
 
-          // If date or time changed, reschedule notification
-          if (settings.notifications && (changes.dueDate || changes.dueTime)) {
-            notificationService.cancelScheduledNotification(id);
-            if (updatedTask.dueDate && updatedTask.dueTime) {
-              notificationService.scheduleNotification(updatedTask, settings);
-            }
-          }
-
-          return updatedTask;
-        }
-        return task;
-      })
-    );
-  };
-
-  const saveSettings = (newSettings) => {
-    setSettings(newSettings);
-  };
-
-  const addFolder = (folderName) => {
-    if (!folders.includes(folderName) && folderName.trim()) {
+    try {
+      // Optimistically update UI
       setFolders([...folders, folderName.trim()]);
+
+      // Create in Supabase
+      await dataService.createFolder(user.id, folderName.trim());
+    } catch (error) {
+      console.error('Error adding folder:', error);
+      alert(error.message || 'Failed to add folder. Please try again.');
+      // Revert on error
+      const foldersData = await dataService.fetchFolders(user.id);
+      setFolders(foldersData);
     }
   };
 
-  const deleteFolder = (folderName) => {
+  const deleteFolder = async (folderName) => {
     if (['All Tasks', 'Work', 'Personal', 'Shopping'].includes(folderName)) {
-      return; // Don't allow deleting default folders
+      alert('Cannot delete default folders');
+      return;
     }
-    setFolders(folders.filter((f) => f !== folderName));
-    // Move tasks from deleted folder to 'Personal'
-    setTasks(
-      tasks.map((task) =>
+
+    if (!window.confirm(`Delete folder "${folderName}"? Tasks in this folder will be moved to "Personal".`)) {
+      return;
+    }
+
+    try {
+      // Optimistically update UI
+      setFolders(folders.filter((f) => f !== folderName));
+
+      // Move tasks from deleted folder to 'Personal'
+      const tasksToMove = tasks.filter(task => task.folder === folderName);
+      for (const task of tasksToMove) {
+        await dataService.updateTask(task.id, { folder: 'Personal' });
+      }
+      setTasks(tasks.map((task) =>
         task.folder === folderName ? { ...task, folder: 'Personal' } : task
-      )
-    );
-    if (selectedFolder === folderName) {
-      setSelectedFolder('All Tasks');
+      ));
+
+      if (selectedFolder === folderName) {
+        setSelectedFolder('All Tasks');
+      }
+
+      // Delete from Supabase
+      await dataService.deleteFolder(user.id, folderName);
+    } catch (error) {
+      console.error('Error deleting folder:', error);
+      alert('Failed to delete folder. Please try again.');
+      // Revert on error
+      const foldersData = await dataService.fetchFolders(user.id);
+      setFolders(foldersData);
+      const tasksData = await dataService.fetchTasks(user.id);
+      setTasks(tasksData);
     }
   };
 
@@ -327,6 +445,11 @@ function MainApp() {
       return new Date(b.createdAt) - new Date(a.createdAt);
     }
   });
+
+  // Show loading spinner while fetching data from Supabase
+  if (dataLoading) {
+    return <LoadingSpinner />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 transition-colors">
