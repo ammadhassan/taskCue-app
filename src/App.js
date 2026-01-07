@@ -15,7 +15,7 @@ import Auth from './components/Auth';
 import { AuthContextProvider, useAuth } from './contexts/AuthContext';
 import { notificationService } from './services/notificationService';
 import { exportAllTasksToCalendar, exportFolderToCalendar } from './services/calendarService';
-import * as dataService from './services/dataService';
+import * as dataService from './services/dataService-simple';
 
 // Main App wrapper with Auth Context
 function App() {
@@ -47,6 +47,8 @@ function AppContent() {
 // Main application logic
 function MainApp() {
   const { user } = useAuth();
+
+  console.log('🚀 [MainApp] Component mounted/rendered. User:', user?.id || 'NO USER');
 
   // State for data from Supabase
   const [tasks, setTasks] = useState([]);
@@ -511,6 +513,8 @@ function MainApp() {
               folders={folders}
               selectedFolder={selectedFolder}
               onSelectFolder={setSelectedFolder}
+              onAddFolder={addFolder}
+              onDeleteFolder={deleteFolder}
             />
 
             {/* Today's Focus */}

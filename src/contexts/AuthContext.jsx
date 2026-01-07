@@ -112,9 +112,52 @@ export function AuthContextProvider({ children }) {
    * Sign out the current user
    */
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.error('Error signing out:', error);
+    try {
+      console.log('🚪 Signing out...');
+
+      // Clear local state first
+      setSession(null);
+      setUser(null);
+
+      // Try to sign out with Supabase (with timeout)
+      const signOutPromise = supabase.auth.signOut();
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Sign out timeout')), 3000)
+      );
+
+      try {
+        await Promise.race([signOutPromise, timeoutPromise]);
+        console.log('✅ Signed out successfully');
+      } catch (error) {
+        console.warn('⚠️ Sign out timed out or failed, forcing logout:', error);
+      }
+
+      // Force clear all Supabase session data from localStorage
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.includes('supabase') || key.includes('sb-'))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => {
+        console.log('🧹 Clearing storage key:', key);
+        localStorage.removeItem(key);
+      });
+
+      // Also clear sessionStorage
+      sessionStorage.clear();
+
+      console.log('✅ Session cleared, redirecting to login...');
+
+      // Force page reload to clear everything
+      window.location.href = '/';
+    } catch (error) {
+      console.error('❌ Error signing out:', error);
+      // Force clear storage anyway
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = '/';
     }
   };
 
