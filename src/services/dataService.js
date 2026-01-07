@@ -223,6 +223,8 @@ export async function deleteFolder(userId, folderName) {
  */
 export async function fetchSettings(userId) {
   try {
+    console.log('🔍 [dataService] Fetching settings for user:', userId);
+
     const { data, error } = await supabase
       .from('settings')
       .select('*')
@@ -230,8 +232,11 @@ export async function fetchSettings(userId) {
       .single();
 
     if (error) {
+      console.log('⚠️ [dataService] Settings query error:', error.code, error.message);
+
       // If no settings exist, return defaults
       if (error.code === 'PGRST116') {
+        console.log('📝 [dataService] No settings found, returning defaults');
         return {
           notifications: true,
           desktopNotifications: true,
@@ -243,10 +248,12 @@ export async function fetchSettings(userId) {
       throw error;
     }
 
+    console.log('✅ [dataService] Settings fetched successfully:', data);
+
     // Convert snake_case to camelCase
     return transformSettingsFromDB(data);
   } catch (error) {
-    console.error('Error fetching settings:', error);
+    console.error('❌ [dataService] Error fetching settings:', error);
     throw error;
   }
 }

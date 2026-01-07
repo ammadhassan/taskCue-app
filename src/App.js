@@ -70,17 +70,28 @@ function MainApp() {
   // Fetch data from Supabase on mount
   useEffect(() => {
     async function loadData() {
-      if (!user?.id) return;
+      if (!user?.id) {
+        console.log('⚠️ [APP] No user ID, skipping data load');
+        return;
+      }
+
+      console.log('🔍 [APP] Starting data load for user:', user.id);
 
       try {
         setDataLoading(true);
 
-        // Fetch tasks, folders, and settings in parallel
-        const [tasksData, foldersData, settingsData] = await Promise.all([
-          dataService.fetchTasks(user.id),
-          dataService.fetchFolders(user.id),
-          dataService.fetchSettings(user.id),
-        ]);
+        // Fetch each resource individually with detailed logging
+        console.log('📥 [APP] Fetching tasks...');
+        const tasksData = await dataService.fetchTasks(user.id);
+        console.log('✅ [APP] Tasks loaded:', tasksData.length);
+
+        console.log('📥 [APP] Fetching folders...');
+        const foldersData = await dataService.fetchFolders(user.id);
+        console.log('✅ [APP] Folders loaded:', foldersData.length);
+
+        console.log('📥 [APP] Fetching settings...');
+        const settingsData = await dataService.fetchSettings(user.id);
+        console.log('✅ [APP] Settings loaded:', settingsData);
 
         setTasks(tasksData);
         setFolders(foldersData);
@@ -92,9 +103,11 @@ function MainApp() {
           settings: settingsData
         });
       } catch (error) {
-        console.error('Error loading data:', error);
-        alert('Failed to load data. Please refresh the page.');
+        console.error('❌ [APP] Error loading data:', error);
+        console.error('❌ [APP] Error details:', error.message, error.stack);
+        alert(`Failed to load data: ${error.message}\n\nPlease refresh the page or contact support.`);
       } finally {
+        console.log('🏁 [APP] Data loading complete, setting dataLoading = false');
         setDataLoading(false);
       }
     }
