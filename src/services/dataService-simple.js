@@ -105,16 +105,53 @@ export async function fetchSettings(userId) {
 
     console.log('📊 Settings REST API status:', response.status);
 
-    // If no settings exist (404), return defaults
+    // If no settings exist (404 or 406), CREATE them automatically
     if (response.status === 406 || response.status === 404) {
-      console.log('📝 No settings found, returning defaults');
-      return {
+      console.log('📝 No settings found, creating default settings');
+
+      const defaultSettings = {
+        user_id: userId,
         notifications: true,
-        desktopNotifications: true,
-        soundAlerts: true,
+        desktop_notifications: true,
+        sound_alerts: true,
         theme: 'light',
-        defaultTiming: 'tomorrow_morning',
+        default_timing: 'tomorrow_morning',
       };
+
+      const createResponse = await fetch(`${supabaseUrl}/rest/v1/settings`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify(defaultSettings)
+      });
+
+      if (createResponse.ok) {
+        const created = await createResponse.json();
+        const data = Array.isArray(created) ? created[0] : created;
+        console.log('✅ Default settings created:', data);
+
+        return {
+          notifications: data.notifications,
+          desktopNotifications: data.desktop_notifications,
+          soundAlerts: data.sound_alerts,
+          theme: data.theme,
+          defaultTiming: data.default_timing,
+        };
+      } else {
+        console.error('❌ Failed to create settings');
+        // Return defaults if creation fails
+        return {
+          notifications: true,
+          desktopNotifications: true,
+          soundAlerts: true,
+          theme: 'light',
+          defaultTiming: 'tomorrow_morning',
+        };
+      }
     }
 
     const data = await response.json();
@@ -145,17 +182,57 @@ export async function fetchSettings(userId) {
   }
 }
 
-// Stub subscription functions - real-time updates disabled for now
+// Real-time subscription functions using Supabase
 export function subscribeToTasks(userId, callback) {
-  console.log('⚠️ subscribeToTasks stub - real-time updates disabled');
-  // Return a no-op unsubscribe function
-  return () => {};
+  console.log('📡 Setting up real-time subscription for tasks');
+
+  const subscription = supabase
+    .channel(`tasks-${userId}`)
+    .on('postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'tasks',
+        filter: `user_id=eq.${userId}`
+      },
+      (payload) => {
+        console.log('🔄 Real-time task change:', payload);
+        callback(payload);
+      }
+    )
+    .subscribe();
+
+  // Return unsubscribe function
+  return () => {
+    console.log('🔌 Unsubscribing from tasks channel');
+    subscription.unsubscribe();
+  };
 }
 
 export function subscribeToFolders(userId, callback) {
-  console.log('⚠️ subscribeToFolders stub - real-time updates disabled');
-  // Return a no-op unsubscribe function
-  return () => {};
+  console.log('📡 Setting up real-time subscription for folders');
+
+  const subscription = supabase
+    .channel(`folders-${userId}`)
+    .on('postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'folders',
+        filter: `user_id=eq.${userId}`
+      },
+      (payload) => {
+        console.log('🔄 Real-time folder change:', payload);
+        callback(payload);
+      }
+    )
+    .subscribe();
+
+  // Return unsubscribe function
+  return () => {
+    console.log('🔌 Unsubscribing from folders channel');
+    subscription.unsubscribe();
+  };
 }
 
 // Task CRUD functions using REST API
