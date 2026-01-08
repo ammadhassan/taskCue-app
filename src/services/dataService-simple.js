@@ -23,20 +23,15 @@ async function getAuthHeaders() {
 export async function fetchTasks(userId) {
   console.log('🔍 Starting fetchTasks for:', userId);
 
-  // Try using fetch() directly to Supabase REST API
   const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-  const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
+  const headers = await getAuthHeaders();
 
-  console.log('🌐 Testing direct REST API call...');
-  console.log('URL:', supabaseUrl);
-  console.log('Key exists:', !!supabaseKey);
+  console.log('🌐 Fetching tasks with auth headers...');
 
   try {
-    const response = await fetch(`${supabaseUrl}/rest/v1/tasks?user_id=eq.${userId}&select=*`, {
+    const response = await fetch(`${supabaseUrl}/rest/v1/tasks?user_id=eq.${userId}&select=*&order=created_at.desc`, {
       headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
+        ...headers,
         'Prefer': 'return=representation'
       }
     });
@@ -60,15 +55,11 @@ export async function fetchFolders(userId) {
   console.log('🔍 Starting fetchFolders for:', userId);
 
   const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-  const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
+  const headers = await getAuthHeaders();
 
   try {
     const response = await fetch(`${supabaseUrl}/rest/v1/folders?user_id=eq.${userId}&select=*&order=created_at.asc`, {
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json'
-      }
+      headers
     });
 
     console.log('📊 Folders REST API status:', response.status);
@@ -91,14 +82,12 @@ export async function fetchSettings(userId) {
   console.log('🔍 Starting fetchSettings for:', userId);
 
   const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-  const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
+  const headers = await getAuthHeaders();
 
   try {
     const response = await fetch(`${supabaseUrl}/rest/v1/settings?user_id=eq.${userId}&select=*`, {
       headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
+        ...headers,
         'Accept': 'application/vnd.pgrst.object+json'
       }
     });
@@ -121,13 +110,13 @@ export async function fetchSettings(userId) {
       const createResponse = await fetch(`${supabaseUrl}/rest/v1/settings`, {
         method: 'POST',
         headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
+          ...headers,
           'Prefer': 'return=representation'
         },
         body: JSON.stringify(defaultSettings)
       });
+
+      console.log('📊 Create settings status:', createResponse.status);
 
       if (createResponse.ok) {
         const created = await createResponse.json();
@@ -142,7 +131,8 @@ export async function fetchSettings(userId) {
           defaultTiming: data.default_timing,
         };
       } else {
-        console.error('❌ Failed to create settings');
+        const errorText = await createResponse.text();
+        console.error('❌ Failed to create settings:', errorText);
         // Return defaults if creation fails
         return {
           notifications: true,
