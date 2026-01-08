@@ -245,9 +245,10 @@ app.post('/api/send-sms', async (req, res) => {
   }
 });
 
-// Start server - bind to 127.0.0.1 (IPv4) explicitly to avoid permission issues
-app.listen(PORT, '127.0.0.1', () => {
-  console.log(`🚀 Task Assistant Backend running on http://127.0.0.1:${PORT}`);
-  console.log(`✅ CORS enabled for http://localhost:3000`);
+// Start server - bind to 0.0.0.0 to accept external connections (required for Railway)
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 TaskCue Backend running on port ${PORT}`);
+  console.log(`🔧 FRONTEND_URL: ${process.env.FRONTEND_URL || 'Not set'}`);
+  console.log(`✅ CORS allowed origins:`, allowedOrigins);
   console.log(`📡 Ready to proxy OpenAI API requests`);
 });
