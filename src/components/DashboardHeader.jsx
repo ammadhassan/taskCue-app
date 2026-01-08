@@ -27,9 +27,12 @@ export default function DashboardHeader({ tasks, onSettingsClick, onExportClick 
       {/* Main Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
         <div>
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-2">
-            Task Dashboard
+          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-1">
+            TaskCue
           </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+            Smartly capture tasks as you talk
+          </p>
           <p className="text-lg text-gray-600 dark:text-gray-400">
             {todayFormatted}
           </p>
