@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const nodemailer = require('nodemailer');
-require('dotenv').config({ path: './server/.env' });
+require('dotenv').config(); // Railway provides env vars directly
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -12,6 +12,9 @@ const allowedOrigins = [
   'http://localhost:3000',
   process.env.FRONTEND_URL
 ].filter(Boolean);
+
+console.log('🔧 [SERVER] FRONTEND_URL from env:', process.env.FRONTEND_URL);
+console.log('✅ [SERVER] Allowed CORS origins:', allowedOrigins);
 
 app.use(cors({
   origin: function (origin, callback) {
