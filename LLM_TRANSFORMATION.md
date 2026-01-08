@@ -205,7 +205,7 @@ if (error.message.includes('API key')) {
 ### Environment Variables
 **File:** `.env`
 ```bash
-REACT_APP_HUGGINGFACE_API_KEY=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
+REACT_APP_HUGGINGFACE_API_KEY=your_huggingface_api_key_here
 ```
 
 **Note:** API key is already configured in your project ✓

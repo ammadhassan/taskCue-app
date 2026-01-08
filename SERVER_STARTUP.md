@@ -105,8 +105,6 @@ HUGGINGFACE_API_KEY=your_actual_key_here
 PORT=3001
 ```
 
-Current API key: `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`
-
 ### Error: "Request timeout"
 
 **Symptom:**
@@ -168,7 +166,7 @@ REACT_APP_BACKEND_URL=http://localhost:3001
 
 ### Backend (server/.env)
 ```bash
-HUGGINGFACE_API_KEY=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
+HUGGINGFACE_API_KEY=your_huggingface_api_key_here
 PORT=3001
 ```
 
