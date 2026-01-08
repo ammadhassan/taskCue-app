@@ -57,8 +57,11 @@ export default function Auth() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-            Task Assistant
+            TaskCue
           </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+            Your words become reminders
+          </p>
           <p className="text-gray-600 dark:text-gray-400">
             {isSignUp ? 'Create your account' : 'Welcome back'}
           </p>
