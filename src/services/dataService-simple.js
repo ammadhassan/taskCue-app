@@ -42,7 +42,20 @@ export async function fetchTasks(userId, session = null) {
       throw new Error(`REST API error: ${response.status} ${response.statusText}`);
     }
 
-    return data || [];
+    // Transform snake_case to camelCase before returning
+    const transformedTasks = (data || []).map(task => ({
+      id: task.id,
+      text: task.text,
+      folder: task.folder,
+      dueDate: task.due_date,      // snake_case → camelCase
+      dueTime: task.due_time,      // snake_case → camelCase
+      priority: task.priority,
+      completed: task.completed,
+      createdAt: task.created_at,
+      updatedAt: task.updated_at,
+    }));
+
+    return transformedTasks;
   } catch (error) {
     console.error('❌ REST API error:', error);
     throw error;
