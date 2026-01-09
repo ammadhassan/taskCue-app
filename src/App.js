@@ -124,11 +124,14 @@ function MainApp() {
     console.log('🔄 Setting up real-time subscriptions...');
 
     // Subscribe to task changes
-    const unsubscribeTasks = dataService.subscribeToTasks(user.id, async () => {
-      // Refetch tasks when they change (simple and safe approach)
-      console.log('🔄 [APP] Task change detected, refetching tasks...');
-      const tasksData = await dataService.fetchTasks(user.id);
-      setTasks(tasksData);
+    const unsubscribeTasks = dataService.subscribeToTasks(user.id, (change) => {
+      if (change.type === 'INSERT') {
+        setTasks(prev => [change.task, ...prev]);
+      } else if (change.type === 'UPDATE') {
+        setTasks(prev => prev.map(t => t.id === change.task.id ? change.task : t));
+      } else if (change.type === 'DELETE') {
+        setTasks(prev => prev.filter(t => t.id !== change.taskId));
+      }
     });
 
     // Subscribe to folder changes
