@@ -117,11 +117,20 @@ Default folders (cannot be deleted): All Tasks, Work, Personal, Shopping
    - If shopping keywords detected → Shopping folder
    - Otherwise → Personal folder (default)
 
-4. **DATE/TIME EXTRACTION** - ALWAYS extract when mentioned:
-   - "tomorrow" → extract tomorrow's date
-   - "next week" → calculate date
-   - "in 2 hours" → calculate exact time
-   - "this evening" → today's date + 18:00
+4. **DATE/TIME EXTRACTION** - CRITICAL FORMAT RULES:
+   - ALWAYS separate date and time into TWO different fields
+   - dueDate: YYYY-MM-DD format ONLY (e.g., "2026-01-09")
+   - dueTime: HH:MM format ONLY (e.g., "15:30")
+   - NEVER put a full datetime string (e.g., "2026-01-09 15:30") in dueTime
+   - NEVER combine date and time in one field
+   - When calculating relative time ("in 5 minutes", "in 2 hours"):
+     1. Calculate the exact future datetime
+     2. Extract date as YYYY-MM-DD → put in dueDate
+     3. Extract time as HH:MM → put in dueTime
+   - Examples:
+     - "tomorrow" → dueDate: tomorrow's date, dueTime: null
+     - "in 2 hours" → dueDate: calculated date, dueTime: calculated time (HH:MM only)
+     - "this evening" → dueDate: today's date, dueTime: "18:00"
 
 5. **QUALITY CHECKS**:
    - Task text should be 2-8 words (concise)
@@ -288,6 +297,17 @@ Input: "add a reminder that I need to pick up bread and milk"
 → Cleanup: remove "add a reminder that I need to"
 → Detect: "pick up" + food items = Shopping
 Output: [{"action": "create", "task": "Pick up bread and milk", "dueDate": null, "dueTime": null, "folder": "Shopping"}]
+
+Input: "add a new task for next 5 minutes"
+→ Cleanup: remove "add a new task for"
+→ Calculate: current time + 5 minutes = ${formatDate(in10mins)} ${formatTime(in10mins)}
+→ CRITICAL: ALWAYS split date and time into separate fields
+Output: [{"action": "create", "task": "New task", "dueDate": "${formatDate(in10mins)}", "dueTime": "${formatTime(in10mins)}", "folder": "Personal"}]
+
+Input: "remind me in 30 minutes"
+→ Calculate: current time + 30 minutes = ${formatDate(in30mins)} ${formatTime(in30mins)}
+→ CRITICAL: dueDate gets YYYY-MM-DD, dueTime gets HH:MM (NEVER combine them)
+Output: [{"action": "create", "task": "Reminder", "dueDate": "${formatDate(in30mins)}", "dueTime": "${formatTime(in30mins)}", "folder": "Personal"}]
 
 **Modify Examples:**
 
