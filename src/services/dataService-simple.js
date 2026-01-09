@@ -187,36 +187,7 @@ export function subscribeToTasks(userId, callback) {
       },
       (payload) => {
         console.log('🔄 Real-time task change:', payload);
-
-        // Transform Supabase payload to app format
-        const transformedPayload = {
-          type: payload.eventType, // INSERT, UPDATE, DELETE
-          task: null,
-          taskId: null
-        };
-
-        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-          // Transform snake_case to camelCase
-          const dbTask = payload.new;
-          transformedPayload.task = {
-            id: dbTask.id,
-            text: dbTask.text,
-            folder: dbTask.folder,
-            dueDate: dbTask.due_date,
-            dueTime: dbTask.due_time,
-            priority: dbTask.priority,
-            completed: dbTask.completed,
-            createdAt: dbTask.created_at,
-            updatedAt: dbTask.updated_at,
-          };
-          transformedPayload.taskId = dbTask.id;
-        } else if (payload.eventType === 'DELETE') {
-          // For DELETE, we only have the old record
-          transformedPayload.taskId = payload.old.id;
-        }
-
-        console.log('🔄 Transformed payload:', transformedPayload);
-        callback(transformedPayload);
+        callback(payload);
       }
     )
     .subscribe();
