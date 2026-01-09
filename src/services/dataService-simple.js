@@ -6,13 +6,17 @@ import { supabase } from '../supabaseClient';
 
 // Helper function to get auth headers with user's session token
 async function getAuthHeaders() {
+  console.log('🔑 [getAuthHeaders] Starting...');
   const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
   const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
 
+  console.log('🔑 [getAuthHeaders] Getting session...');
   // Get user's session token for RLS
   const { data: { session } } = await supabase.auth.getSession();
+  console.log('🔑 [getAuthHeaders] Session retrieved:', session ? 'YES' : 'NO');
   const token = session?.access_token || supabaseKey;
 
+  console.log('🔑 [getAuthHeaders] Returning headers');
   return {
     'apikey': supabaseKey,
     'Authorization': `Bearer ${token}`,
