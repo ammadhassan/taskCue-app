@@ -124,13 +124,53 @@ function MainApp() {
     console.log('🔄 Setting up real-time subscriptions...');
 
     // Subscribe to task changes
-    const unsubscribeTasks = dataService.subscribeToTasks(user.id, (change) => {
-      if (change.type === 'INSERT') {
-        setTasks(prev => [change.task, ...prev]);
-      } else if (change.type === 'UPDATE') {
-        setTasks(prev => prev.map(t => t.id === change.task.id ? change.task : t));
-      } else if (change.type === 'DELETE') {
-        setTasks(prev => prev.filter(t => t.id !== change.taskId));
+    const unsubscribeTasks = dataService.subscribeToTasks(user.id, (payload) => {
+      console.log('🔄 [APP] Real-time event received:', payload);
+
+      // Handle Supabase's payload format
+      const eventType = payload.eventType;
+
+      if (eventType === 'INSERT') {
+        // Transform Supabase's snake_case to app's camelCase
+        const dbTask = payload.new;
+        if (dbTask) {
+          const newTask = {
+            id: dbTask.id,
+            text: dbTask.text,
+            folder: dbTask.folder,
+            dueDate: dbTask.due_date,
+            dueTime: dbTask.due_time,
+            priority: dbTask.priority,
+            completed: dbTask.completed,
+            createdAt: dbTask.created_at,
+            updatedAt: dbTask.updated_at,
+          };
+          console.log('➕ [APP] Adding task to UI:', newTask);
+          setTasks(prev => [newTask, ...prev]);
+        }
+      } else if (eventType === 'UPDATE') {
+        const dbTask = payload.new;
+        if (dbTask) {
+          const updatedTask = {
+            id: dbTask.id,
+            text: dbTask.text,
+            folder: dbTask.folder,
+            dueDate: dbTask.due_date,
+            dueTime: dbTask.due_time,
+            priority: dbTask.priority,
+            completed: dbTask.completed,
+            createdAt: dbTask.created_at,
+            updatedAt: dbTask.updated_at,
+          };
+          console.log('✏️ [APP] Updating task in UI:', updatedTask);
+          setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
+        }
+      } else if (eventType === 'DELETE') {
+        const taskId = payload.old?.id;
+        if (taskId) {
+          console.log('🗑️ [APP] Removing task from UI:', taskId);
+          setTasks(prev => prev.filter(t => t.id !== taskId));
+        }
       }
     });
 
@@ -145,7 +185,7 @@ function MainApp() {
       unsubscribeTasks();
       unsubscribeFolders();
     };
-  }, [user]);
+  }, [user?.id]);
 
   // Apply theme
   useEffect(() => {
