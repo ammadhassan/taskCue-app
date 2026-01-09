@@ -309,6 +309,31 @@ Input: "remind me in 30 minutes"
 → CRITICAL: dueDate gets YYYY-MM-DD, dueTime gets HH:MM (NEVER combine them)
 Output: [{"action": "create", "task": "Reminder", "dueDate": "${formatDate(in30mins)}", "dueTime": "${formatTime(in30mins)}", "folder": "Personal"}]
 
+**Time Calculation Examples (CRITICAL):**
+
+CRITICAL TIME CALCULATION RULES:
+- "in X minutes" / "for X minutes" = current time + X minutes
+- "in X hours" = current time + X hours
+- NEVER round to nearest hour unless explicitly requested
+- ALWAYS calculate exact time from current moment
+- Current exact time is: ${currentTime}
+
+Current exact time for examples: ${currentTime}
+
+Input: "add a new reminder for 5 minutes"
+→ Current time: ${currentTime}
+→ Calculation: ${currentTime} + 5 minutes = ${formatTime(new Date(now.getTime() + 5 * 60000))}
+→ CRITICAL: "for 5 minutes" means FROM NOW, not a specific time
+Output: [{"action": "create", "task": "Reminder", "dueDate": "${formatDate(new Date(now.getTime() + 5 * 60000))}", "dueTime": "${formatTime(new Date(now.getTime() + 5 * 60000))}", "folder": "Personal"}]
+
+Input: "remind me in 10 minutes to call"
+→ Current time: ${currentTime}
+→ Calculation: ${currentTime} + 10 minutes = ${formatTime(new Date(now.getTime() + 10 * 60000))}
+→ CRITICAL: Calculate from current exact time, not rounded hours
+Output: [{"action": "create", "task": "Call", "dueDate": "${formatDate(new Date(now.getTime() + 10 * 60000))}", "dueTime": "${formatTime(new Date(now.getTime() + 10 * 60000))}", "folder": "Personal"}]
+
+**CRITICAL: Always calculate from ${currentTime}, not from rounded hours!**
+
 **Modify Examples:**
 
 Input: "Move my email task to tomorrow at 3pm"

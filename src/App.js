@@ -293,8 +293,8 @@ function MainApp() {
         priority,
       }, session);
 
-      // Optimistically update UI
-      setTasks(prevTasks => [newTask, ...prevTasks]);
+      // Task will appear automatically via real-time subscription
+      // No optimistic update needed since real-time is fast enough
 
       console.log(`🔔 [APP] Task added. Checking if notification should be scheduled...`);
       console.log(`🔔 [APP] Notifications enabled: ${settings.notifications}`);
