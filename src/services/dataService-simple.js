@@ -228,21 +228,26 @@ export function subscribeToFolders(userId, callback) {
 // Task CRUD functions using REST API
 export async function createTask(userId, taskData) {
   console.log('➕ Creating task:', taskData);
+  console.log('➕ User ID:', userId);
 
   const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-  const headers = await getAuthHeaders();
-
-  const taskForDB = {
-    user_id: userId,
-    text: taskData.text,
-    folder: taskData.folder || 'Personal',
-    due_date: taskData.dueDate || null,
-    due_time: taskData.dueTime || null,
-    priority: taskData.priority || 'medium',
-    completed: false,
-  };
 
   try {
+    const headers = await getAuthHeaders();
+    console.log('➕ Got auth headers');
+
+    const taskForDB = {
+      user_id: userId,
+      text: taskData.text,
+      folder: taskData.folder || 'Personal',
+      due_date: taskData.dueDate || null,
+      due_time: taskData.dueTime || null,
+      priority: taskData.priority || 'medium',
+      completed: false,
+    };
+
+    console.log('➕ Task for DB:', taskForDB);
+
     const response = await fetch(`${supabaseUrl}/rest/v1/tasks`, {
       method: 'POST',
       headers: { ...headers, 'Prefer': 'return=representation' },
@@ -250,16 +255,34 @@ export async function createTask(userId, taskData) {
     });
 
     console.log('📊 Create task status:', response.status);
-    const data = await response.json();
-    console.log('📊 Created task:', data);
+
+    const responseText = await response.text();
+    console.log('📊 Raw response:', responseText);
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error('❌ Failed to parse response:', e);
+      throw new Error('Invalid JSON response from server');
+    }
+
+    console.log('📊 Created task data:', data);
 
     if (!response.ok) {
-      throw new Error(`Create task error: ${response.status}`);
+      console.error('❌ Create task failed:', response.status, data);
+      throw new Error(`Create task error: ${response.status} - ${JSON.stringify(data)}`);
     }
 
     // Transform snake_case to camelCase
     const task = Array.isArray(data) ? data[0] : data;
-    return {
+
+    if (!task || !task.id) {
+      console.error('❌ No task returned from database');
+      throw new Error('Database did not return created task');
+    }
+
+    const result = {
       id: task.id,
       text: task.text,
       folder: task.folder,
@@ -270,8 +293,12 @@ export async function createTask(userId, taskData) {
       createdAt: task.created_at,
       updatedAt: task.updated_at,
     };
+
+    console.log('✅ Task created successfully:', result);
+    return result;
   } catch (error) {
     console.error('❌ Create task error:', error);
+    console.error('❌ Error stack:', error.stack);
     throw error;
   }
 }
