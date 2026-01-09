@@ -5,18 +5,12 @@ import { supabase } from '../supabaseClient';
  */
 
 // Helper function to get auth headers with user's session token
-async function getAuthHeaders() {
-  console.log('🔑 [getAuthHeaders] Starting...');
-  const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
+function getAuthHeaders(session = null) {
   const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
 
-  console.log('🔑 [getAuthHeaders] Getting session...');
-  // Get user's session token for RLS
-  const { data: { session } } = await supabase.auth.getSession();
-  console.log('🔑 [getAuthHeaders] Session retrieved:', session ? 'YES' : 'NO');
+  // Use provided session or fall back to anon key
   const token = session?.access_token || supabaseKey;
 
-  console.log('🔑 [getAuthHeaders] Returning headers');
   return {
     'apikey': supabaseKey,
     'Authorization': `Bearer ${token}`,
@@ -24,11 +18,11 @@ async function getAuthHeaders() {
   };
 }
 
-export async function fetchTasks(userId) {
+export async function fetchTasks(userId, session = null) {
   console.log('🔍 Starting fetchTasks for:', userId);
 
   const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-  const headers = await getAuthHeaders();
+  const headers = getAuthHeaders(session);
 
   console.log('🌐 Fetching tasks with auth headers...');
 
@@ -55,11 +49,11 @@ export async function fetchTasks(userId) {
   }
 }
 
-export async function fetchFolders(userId) {
+export async function fetchFolders(userId, session = null) {
   console.log('🔍 Starting fetchFolders for:', userId);
 
   const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-  const headers = await getAuthHeaders();
+  const headers = getAuthHeaders(session);
 
   try {
     const response = await fetch(`${supabaseUrl}/rest/v1/folders?user_id=eq.${userId}&select=*&order=created_at.asc`, {
@@ -82,11 +76,11 @@ export async function fetchFolders(userId) {
   }
 }
 
-export async function fetchSettings(userId) {
+export async function fetchSettings(userId, session = null) {
   console.log('🔍 Starting fetchSettings for:', userId);
 
   const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-  const headers = await getAuthHeaders();
+  const headers = getAuthHeaders(session);
 
   try {
     const response = await fetch(`${supabaseUrl}/rest/v1/settings?user_id=eq.${userId}&select=*`, {
@@ -230,14 +224,14 @@ export function subscribeToFolders(userId, callback) {
 }
 
 // Task CRUD functions using REST API
-export async function createTask(userId, taskData) {
+export async function createTask(userId, taskData, session = null) {
   console.log('➕ Creating task:', taskData);
   console.log('➕ User ID:', userId);
 
   const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 
   try {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders(session);
     console.log('➕ Got auth headers');
 
     const taskForDB = {
@@ -307,11 +301,11 @@ export async function createTask(userId, taskData) {
   }
 }
 
-export async function updateTask(taskId, updates) {
+export async function updateTask(taskId, updates, session = null) {
   console.log('✏️ Updating task:', taskId, updates);
 
   const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-  const headers = await getAuthHeaders();
+  const headers = getAuthHeaders(session);
 
   // Convert camelCase to snake_case
   const dbUpdates = {
@@ -358,11 +352,11 @@ export async function updateTask(taskId, updates) {
   }
 }
 
-export async function deleteTask(taskId) {
+export async function deleteTask(taskId, session = null) {
   console.log('🗑️ Deleting task:', taskId);
 
   const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-  const headers = await getAuthHeaders();
+  const headers = getAuthHeaders(session);
 
   try {
     const response = await fetch(`${supabaseUrl}/rest/v1/tasks?id=eq.${taskId}`, {
@@ -383,11 +377,11 @@ export async function deleteTask(taskId) {
   }
 }
 
-export async function toggleTaskComplete(taskId, completed) {
+export async function toggleTaskComplete(taskId, completed, session = null) {
   console.log('✅ Toggling task:', taskId, completed);
 
   const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-  const headers = await getAuthHeaders();
+  const headers = getAuthHeaders(session);
 
   try {
     const response = await fetch(`${supabaseUrl}/rest/v1/tasks?id=eq.${taskId}`, {
@@ -426,11 +420,11 @@ export async function toggleTaskComplete(taskId, completed) {
 }
 
 // Folder CRUD functions using REST API
-export async function createFolder(userId, name) {
+export async function createFolder(userId, name, session = null) {
   console.log('📁 Creating folder:', name);
 
   const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-  const headers = await getAuthHeaders();
+  const headers = getAuthHeaders(session);
 
   try {
     const response = await fetch(`${supabaseUrl}/rest/v1/folders`, {
@@ -458,7 +452,7 @@ export async function createFolder(userId, name) {
   }
 }
 
-export async function deleteFolder(userId, folderName) {
+export async function deleteFolder(userId, folderName, session = null) {
   console.log('🗑️ Deleting folder:', folderName);
 
   if (folderName === 'All Tasks') {
@@ -466,7 +460,7 @@ export async function deleteFolder(userId, folderName) {
   }
 
   const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-  const headers = await getAuthHeaders();
+  const headers = getAuthHeaders(session);
 
   try {
     const response = await fetch(`${supabaseUrl}/rest/v1/folders?user_id=eq.${userId}&name=eq.${encodeURIComponent(folderName)}`, {
@@ -487,11 +481,11 @@ export async function deleteFolder(userId, folderName) {
   }
 }
 
-export async function updateSettings(userId, settings) {
+export async function updateSettings(userId, settings, session = null) {
   console.log('⚙️ Updating settings:', settings);
 
   const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-  const headers = await getAuthHeaders();
+  const headers = getAuthHeaders(session);
 
   const dbSettings = {
     notifications: settings.notifications,

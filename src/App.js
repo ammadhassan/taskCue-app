@@ -46,7 +46,7 @@ function AppContent() {
 
 // Main application logic
 function MainApp() {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
 
   console.log('🚀 [MainApp] Component mounted/rendered. User:', user?.id || 'NO USER');
 
@@ -84,15 +84,15 @@ function MainApp() {
 
         // Fetch each resource individually with detailed logging
         console.log('📥 [APP] Fetching tasks...');
-        const tasksData = await dataService.fetchTasks(user.id);
+        const tasksData = await dataService.fetchTasks(user.id, session);
         console.log('✅ [APP] Tasks loaded:', tasksData.length);
 
         console.log('📥 [APP] Fetching folders...');
-        const foldersData = await dataService.fetchFolders(user.id);
+        const foldersData = await dataService.fetchFolders(user.id, session);
         console.log('✅ [APP] Folders loaded:', foldersData.length);
 
         console.log('📥 [APP] Fetching settings...');
-        const settingsData = await dataService.fetchSettings(user.id);
+        const settingsData = await dataService.fetchSettings(user.id, session);
         console.log('✅ [APP] Settings loaded:', settingsData);
 
         setTasks(tasksData);
@@ -177,7 +177,7 @@ function MainApp() {
     // Subscribe to folder changes
     const unsubscribeFolders = dataService.subscribeToFolders(user.id, async () => {
       // Refetch folders when they change
-      const foldersData = await dataService.fetchFolders(user.id);
+      const foldersData = await dataService.fetchFolders(user.id, session);
       setFolders(foldersData);
     });
 
@@ -291,7 +291,7 @@ function MainApp() {
         dueDate,
         dueTime,
         priority,
-      });
+      }, session);
 
       // Optimistically update UI
       setTasks(prevTasks => [newTask, ...prevTasks]);
@@ -329,12 +329,12 @@ function MainApp() {
       }
 
       // Update in Supabase
-      await dataService.toggleTaskComplete(id, newCompleted);
+      await dataService.toggleTaskComplete(id, newCompleted, session);
     } catch (error) {
       console.error('Error toggling task:', error);
       alert('Failed to update task. Please try again.');
       // Revert optimistic update on error
-      const tasksData = await dataService.fetchTasks(user.id);
+      const tasksData = await dataService.fetchTasks(user.id, session);
       setTasks(tasksData);
     }
   };
@@ -348,12 +348,12 @@ function MainApp() {
       setTasks(tasks.filter((task) => task.id !== id));
 
       // Delete from Supabase
-      await dataService.deleteTask(id);
+      await dataService.deleteTask(id, session);
     } catch (error) {
       console.error('Error deleting task:', error);
       alert('Failed to delete task. Please try again.');
       // Revert optimistic update on error
-      const tasksData = await dataService.fetchTasks(user.id);
+      const tasksData = await dataService.fetchTasks(user.id, session);
       setTasks(tasksData);
     }
   };
@@ -377,12 +377,12 @@ function MainApp() {
       }
 
       // Update in Supabase
-      await dataService.updateTask(id, changes);
+      await dataService.updateTask(id, changes, session);
     } catch (error) {
       console.error('Error modifying task:', error);
       alert('Failed to update task. Please try again.');
       // Revert optimistic update on error
-      const tasksData = await dataService.fetchTasks(user.id);
+      const tasksData = await dataService.fetchTasks(user.id, session);
       setTasks(tasksData);
     }
   };
@@ -393,12 +393,12 @@ function MainApp() {
       setSettings(newSettings);
 
       // Save to Supabase
-      await dataService.updateSettings(user.id, newSettings);
+      await dataService.updateSettings(user.id, newSettings, session);
     } catch (error) {
       console.error('Error saving settings:', error);
       alert('Failed to save settings. Please try again.');
       // Revert on error
-      const settingsData = await dataService.fetchSettings(user.id);
+      const settingsData = await dataService.fetchSettings(user.id, session);
       setSettings(settingsData);
     }
   };
@@ -415,12 +415,12 @@ function MainApp() {
       setFolders([...folders, folderName.trim()]);
 
       // Create in Supabase
-      await dataService.createFolder(user.id, folderName.trim());
+      await dataService.createFolder(user.id, folderName.trim(), session);
     } catch (error) {
       console.error('Error adding folder:', error);
       alert(error.message || 'Failed to add folder. Please try again.');
       // Revert on error
-      const foldersData = await dataService.fetchFolders(user.id);
+      const foldersData = await dataService.fetchFolders(user.id, session);
       setFolders(foldersData);
     }
   };
@@ -442,7 +442,7 @@ function MainApp() {
       // Move tasks from deleted folder to 'Personal'
       const tasksToMove = tasks.filter(task => task.folder === folderName);
       for (const task of tasksToMove) {
-        await dataService.updateTask(task.id, { folder: 'Personal' });
+        await dataService.updateTask(task.id, { folder: 'Personal' }, session);
       }
       setTasks(tasks.map((task) =>
         task.folder === folderName ? { ...task, folder: 'Personal' } : task
@@ -453,14 +453,14 @@ function MainApp() {
       }
 
       // Delete from Supabase
-      await dataService.deleteFolder(user.id, folderName);
+      await dataService.deleteFolder(user.id, folderName, session);
     } catch (error) {
       console.error('Error deleting folder:', error);
       alert('Failed to delete folder. Please try again.');
       // Revert on error
-      const foldersData = await dataService.fetchFolders(user.id);
+      const foldersData = await dataService.fetchFolders(user.id, session);
       setFolders(foldersData);
-      const tasksData = await dataService.fetchTasks(user.id);
+      const tasksData = await dataService.fetchTasks(user.id, session);
       setTasks(tasksData);
     }
   };
