@@ -4,6 +4,17 @@
   "installCommand": "yarn install",
   "outputDirectory": "build",
   "framework": "create-react-app",
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "dev": true
+    }
+  },
+  "github": {
+    "enabled": true,
+    "autoAlias": true,
+    "silent": false
+  },
   "rewrites": [
     {
       "source": "/(.*)",
