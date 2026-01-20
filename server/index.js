@@ -11,6 +11,7 @@ const PORT = process.env.PORT || 3001;
 // Enable CORS for frontend
 const allowedOrigins = [
   'http://localhost:3000',
+  'http://127.0.0.1:3000', // Playwright uses 127.0.0.1 instead of localhost
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
