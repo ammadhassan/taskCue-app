@@ -22,7 +22,13 @@ export default function TaskForm({ onAddTask, folders, selectedFolder, settings,
         // Create new task
         let taskDueDate = actionItem.dueDate || dueDate || null;
         let taskDueTime = actionItem.dueTime || dueTime || null; // AI time takes priority, fallback to manual
-        const taskFolder = actionItem.folder || folder;
+
+        // Folder priority logic:
+        // - If user explicitly selected a CUSTOM folder (not default Work/Personal/Shopping), always use it
+        // - Otherwise, let AI categorize based on text content
+        const defaultFolders = ['Work', 'Personal', 'Shopping'];
+        const isCustomFolder = !defaultFolders.includes(folder);
+        const taskFolder = isCustomFolder ? folder : (actionItem.folder || folder);
 
         // Apply smart defaults for missing fields
         if (shouldApplyDefaults(taskDueDate, taskDueTime)) {

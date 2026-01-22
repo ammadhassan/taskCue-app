@@ -56,11 +56,10 @@ test.describe('Folder Management', () => {
     await addFolder(page, 'Important');
 
     // Create a task and manually assign it to the folder
-    await page.fill('[data-testid="task-input"]', 'Review quarterly goals');
-    await page.selectOption('[data-testid="folder-select"]', 'Important');
-    await page.click('[data-testid="add-task-button"]');
-
-    await page.waitForTimeout(3000);
+    await createTask(page, {
+      text: 'Review quarterly goals',
+      folder: 'Important',
+    });
 
     // Verify task was assigned to the correct folder
     await verifyTaskExists(page, {
@@ -72,9 +71,7 @@ test.describe('Folder Management', () => {
   test('Shopping keywords auto-categorize to Shopping folder', async ({ page }) => {
     // Create multiple shopping tasks
     for (const task of shoppingTasks.slice(0, 3)) {
-      await page.fill('[data-testid="task-input"]', task.text);
-      await page.click('[data-testid="add-task-button"]');
-      await page.waitForTimeout(3000);
+      await createTask(page, { text: task.text });
 
       // Verify task was auto-categorized
       await verifyTaskExists(page, {
@@ -87,9 +84,7 @@ test.describe('Folder Management', () => {
   test('Work keywords auto-categorize to Work folder', async ({ page }) => {
     // Create multiple work tasks
     for (const task of workTasks.slice(0, 3)) {
-      await page.fill('[data-testid="task-input"]', task.text);
-      await page.click('[data-testid="add-task-button"]');
-      await page.waitForTimeout(3000);
+      await createTask(page, { text: task.text });
 
       // Verify task was auto-categorized
       await verifyTaskExists(page, {
@@ -102,9 +97,7 @@ test.describe('Folder Management', () => {
   test('Personal keywords auto-categorize to Personal folder', async ({ page }) => {
     // Create multiple personal tasks
     for (const task of personalTasks.slice(0, 3)) {
-      await page.fill('[data-testid="task-input"]', task.text);
-      await page.click('[data-testid="add-task-button"]');
-      await page.waitForTimeout(3000);
+      await createTask(page, { text: task.text });
 
       // Verify task was auto-categorized
       await verifyTaskExists(page, {
@@ -116,17 +109,9 @@ test.describe('Folder Management', () => {
 
   test('Folder filtering works correctly', async ({ page }) => {
     // Create tasks in different folders
-    await page.fill('[data-testid="task-input"]', 'Buy groceries');
-    await page.click('[data-testid="add-task-button"]');
-    await page.waitForTimeout(3000);
-
-    await page.fill('[data-testid="task-input"]', 'Email client');
-    await page.click('[data-testid="add-task-button"]');
-    await page.waitForTimeout(3000);
-
-    await page.fill('[data-testid="task-input"]', 'Doctor appointment');
-    await page.click('[data-testid="add-task-button"]');
-    await page.waitForTimeout(3000);
+    await createTask(page, { text: 'Buy groceries' });
+    await createTask(page, { text: 'Email client' });
+    await createTask(page, { text: 'Doctor appointment' });
 
     // Filter by Shopping folder
     await page.click('[data-testid="filter-shopping"]');
@@ -180,9 +165,7 @@ test.describe('Folder Management', () => {
     ];
 
     for (const task of ambiguousTasks) {
-      await page.fill('[data-testid="task-input"]', task.input);
-      await page.click('[data-testid="add-task-button"]');
-      await page.waitForTimeout(3000);
+      await createTask(page, { text: task.input });
 
       // Verify task was categorized
       await verifyTaskExists(page, {

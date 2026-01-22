@@ -299,6 +299,30 @@ export async function addFolder(page, folderName) {
   await page.click('[data-testid="add-folder-button"]');
   await page.fill('[data-testid="folder-name-input"]', folderName);
   await page.click('[data-testid="save-folder-button"]');
+
+  // Wait for folder to actually appear in the folder list (real-time update)
+  await page.waitForFunction(
+    (name) => {
+      const folderList = document.querySelector('[data-testid="folder-list"]');
+      return folderList && folderList.innerText.includes(name);
+    },
+    folderName,
+    { timeout: 10000 }
+  );
+
+  // Also wait for it to appear in the folder select dropdown
+  await page.waitForFunction(
+    (name) => {
+      const folderSelect = document.querySelector('[data-testid="folder-select"]');
+      if (!folderSelect) return false;
+      const options = Array.from(folderSelect.querySelectorAll('option'));
+      return options.some(opt => opt.textContent.trim() === name);
+    },
+    folderName,
+    { timeout: 10000 }
+  );
+
+  // Small stabilization delay
   await page.waitForTimeout(500);
 }
 
