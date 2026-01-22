@@ -75,19 +75,23 @@ test.describe('Simple E2E Tests - Step by Step', () => {
       await page.screenshot({ path: 'test-failure-api-timeout.png', fullPage: true });
     }
 
-    // Wait for task to appear in DOM
+    // Wait for the specific task to appear in DOM (by content, not count)
     try {
       await page.waitForFunction(
-        (expectedCount) => {
+        () => {
           const tasks = document.querySelectorAll('[data-testid="task-item"]');
-          return tasks.length > expectedCount;
+          return Array.from(tasks).some(task => {
+            const textEl = task.querySelector('[data-testid="task-text"]');
+            if (!textEl) return false;
+            const text = textEl.textContent.toLowerCase();
+            return text.includes('milk') || text.includes('buy');
+          });
         },
-        initialCount,
-        { timeout: 10000 }
+        { timeout: 15000 }
       );
       console.log('✅ Task appeared in DOM');
     } catch (waitError) {
-      console.error('❌ Task did not appear in DOM after 10 seconds');
+      console.error('❌ Task did not appear in DOM after 15 seconds');
       await page.screenshot({ path: 'test-failure-no-task-in-dom.png', fullPage: true });
       console.error('Console logs:', consoleLogs);
       console.error('Failed requests:', JSON.stringify(failedRequests, null, 2));

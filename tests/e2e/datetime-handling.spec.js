@@ -56,7 +56,10 @@ test.describe('Date/Time Handling', () => {
 
     const tasks1 = await getTasks(page);
     expect(tasks1.length).toBeGreaterThan(0);
-    const task1 = tasks1[0]; // Get newest task (first in list)
+
+    // Find the task with 3pm time (15:00) - don't assume position
+    const task1 = tasks1.find(t => t.dueTime && t.dueTime.includes('15:00'));
+    expect(task1).toBeTruthy();
 
     // Verify it's scheduled for today
     const taskDate1 = new Date(task1.dueDate);
@@ -77,7 +80,10 @@ test.describe('Date/Time Handling', () => {
 
     const tasks2 = await getTasks(page);
     expect(tasks2.length).toBeGreaterThan(0);
-    const task2 = tasks2[0]; // Get newest task (first in list)
+
+    // Find the task with 1pm time (13:00) - don't assume position
+    const task2 = tasks2.find(t => t.dueTime && t.dueTime.includes('13:00'));
+    expect(task2).toBeTruthy();
 
     // Verify it's scheduled for tomorrow
     const tomorrow = new Date(mockDate);
@@ -107,7 +113,10 @@ test.describe('Date/Time Handling', () => {
 
     const tasks1 = await getTasks(page);
     expect(tasks1.length).toBeGreaterThan(0);
-    const task1 = tasks1[0]; // Get newest task (first in list)
+
+    // Find the task with 11pm time (23:00) - don't assume position
+    const task1 = tasks1.find(t => t.dueTime && t.dueTime.includes('23:00'));
+    expect(task1).toBeTruthy();
 
     // Verify it's scheduled for today
     const taskDate1 = new Date(task1.dueDate);
@@ -126,7 +135,10 @@ test.describe('Date/Time Handling', () => {
 
     const tasks2 = await getTasks(page);
     expect(tasks2.length).toBeGreaterThan(0);
-    const task2 = tasks2[0]; // Get newest task (first in list)
+
+    // Find the task with 9am time (09:00) - don't assume position
+    const task2 = tasks2.find(t => t.dueTime && t.dueTime.includes('09:00'));
+    expect(task2).toBeTruthy();
 
     // Verify it's scheduled for tomorrow
     const tomorrow = new Date(mockDate);
