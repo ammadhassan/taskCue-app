@@ -14,8 +14,12 @@ test.describe('Date/Time Handling', () => {
   });
 
   test('Task without date/time gets default values (not blank)', async ({ page }) => {
+    // Get initial task count to identify the new task
+    const initialTasks = await getTasks(page);
+    const initialCount = initialTasks.length;
+
     // Create a simple task with no date/time mention
-    await page.fill('[data-testid="task-input"]', 'Buy milk');
+    await page.fill('[data-testid="task-input"]', 'Buy groceries for dinner');
     await page.click('[data-testid="add-task-button"]');
 
     // Wait for AI processing
@@ -25,10 +29,10 @@ test.describe('Date/Time Handling', () => {
     const tasks = await getTasks(page);
 
     // Verify the task was created
-    expect(tasks.length).toBeGreaterThan(0);
+    expect(tasks.length).toBeGreaterThan(initialCount);
 
-    // Find our task
-    const ourTask = tasks.find((t) => t.text.toLowerCase().includes('milk'));
+    // Find our task - search for unique text to avoid collision with simple.spec.js "Buy milk"
+    const ourTask = tasks.find((t) => t.text.toLowerCase().includes('groceries'));
     expect(ourTask).toBeTruthy();
 
     // Verify date and time are NOT null or empty
@@ -216,7 +220,8 @@ test.describe('Date/Time Handling', () => {
     await page.waitForTimeout(1000);
 
     const tasks = await getTasks(page);
-    const task = tasks.find((t) => t.text.toLowerCase().includes('doctor'));
+    // Find by unique time (10:30) instead of "doctor" to avoid collision with other tests
+    const task = tasks.find((t) => t.dueTime && t.dueTime.includes('10:30'));
 
     expect(task).toBeTruthy();
 
