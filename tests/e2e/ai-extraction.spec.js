@@ -27,8 +27,9 @@ test.describe('AI Task Extraction', () => {
     // Click add task button
     await page.click('[data-testid="add-task-button"]');
 
-    // Wait for AI processing
-    await page.waitForTimeout(3000);
+    // Wait for AI processing to complete (button re-enables)
+    await page.waitForSelector('[data-testid="add-task-button"]:not([disabled])', { timeout: 10000 });
+    await page.waitForTimeout(500);
 
     // Verify task was created
     await verifyTaskExists(page, {
@@ -50,9 +51,9 @@ test.describe('AI Task Extraction', () => {
       await page.waitForSelector('[data-testid="add-task-button"]:not([disabled])', { timeout: 10000 });
       await page.click('[data-testid="add-task-button"]');
 
-      // Wait for AI processing AND button to be re-enabled for next iteration
-      await page.waitForTimeout(3000);
+      // Wait for AI processing to complete (button re-enables)
       await page.waitForSelector('[data-testid="add-task-button"]:not([disabled])', { timeout: 10000 });
+      await page.waitForTimeout(500);
 
       try {
         // Verify task was categorized correctly
@@ -90,9 +91,9 @@ test.describe('AI Task Extraction', () => {
       await page.waitForSelector('[data-testid="add-task-button"]:not([disabled])', { timeout: 10000 });
       await page.click('[data-testid="add-task-button"]');
 
-      // Wait for AI processing AND button to be re-enabled for next iteration
-      await page.waitForTimeout(3000);
+      // Wait for AI processing to complete (button re-enables)
       await page.waitForSelector('[data-testid="add-task-button"]:not([disabled])', { timeout: 10000 });
+      await page.waitForTimeout(500);
 
       // Verify task was categorized correctly
       await verifyTaskExists(page, {
@@ -115,9 +116,9 @@ test.describe('AI Task Extraction', () => {
       await page.waitForSelector('[data-testid="add-task-button"]:not([disabled])', { timeout: 10000 });
       await page.click('[data-testid="add-task-button"]');
 
-      // Wait for AI processing AND button to be re-enabled for next iteration
-      await page.waitForTimeout(3000);
+      // Wait for AI processing to complete (button re-enables)
       await page.waitForSelector('[data-testid="add-task-button"]:not([disabled])', { timeout: 10000 });
+      await page.waitForTimeout(500);
 
       // Verify task was categorized correctly
       await verifyTaskExists(page, {
@@ -148,8 +149,9 @@ test.describe('AI Task Extraction', () => {
     // Submit the task
     await page.click('[data-testid="add-task-button"]');
 
-    // Wait for AI processing
-    await page.waitForTimeout(3000);
+    // Wait for AI processing to complete (button re-enables)
+    await page.waitForSelector('[data-testid="add-task-button"]:not([disabled])', { timeout: 10000 });
+    await page.waitForTimeout(500);
 
     // Verify task was created with correct properties
     await verifyTaskExists(page, {
@@ -172,8 +174,9 @@ test.describe('AI Task Extraction', () => {
     // Click add task button
     await page.click('[data-testid="add-task-button"]');
 
-    // Wait for AI processing
-    await page.waitForTimeout(3000);
+    // Wait for AI processing to complete (button re-enables)
+    await page.waitForSelector('[data-testid="add-task-button"]:not([disabled])', { timeout: 10000 });
+    await page.waitForTimeout(500);
 
     // Verify task was created
     await verifyTaskExists(page, {
@@ -208,9 +211,9 @@ test.describe('AI Task Extraction', () => {
       await page.waitForSelector('[data-testid="add-task-button"]:not([disabled])', { timeout: 10000 });
       await page.click('[data-testid="add-task-button"]');
 
-      // Wait for AI processing AND button to be re-enabled for next iteration
-      await page.waitForTimeout(3000);
+      // Wait for AI processing to complete (button re-enables)
       await page.waitForSelector('[data-testid="add-task-button"]:not([disabled])', { timeout: 10000 });
+      await page.waitForTimeout(500);
 
       await verifyTaskExists(page, {
         folder: task.expectedFolder,

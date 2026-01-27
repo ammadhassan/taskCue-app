@@ -22,8 +22,9 @@ test.describe('Date/Time Handling', () => {
     await page.fill('[data-testid="task-input"]', 'Buy groceries for dinner');
     await page.click('[data-testid="add-task-button"]');
 
-    // Wait for AI processing
-    await page.waitForTimeout(2000);
+    // Wait for AI processing to complete (button re-enables)
+    await page.waitForSelector('[data-testid="add-task-button"]:not([disabled])', { timeout: 10000 });
+    await page.waitForTimeout(500);
 
     // Get all tasks
     const tasks = await getTasks(page);
@@ -238,9 +239,9 @@ test.describe('Date/Time Handling', () => {
 
   test('Morning/afternoon/evening terms get appropriate default times', async ({ page }) => {
     const timeTerms = [
-      { input: 'Meeting tomorrow morning', expectedHour: 9 },
-      { input: 'Call tomorrow afternoon', expectedHour: 14 },
-      { input: 'Dinner tomorrow evening', expectedHour: 18 },
+      { input: 'Team standup tomorrow morning', keyword: 'standup', timePattern: /^(08|09):\d{2}(:\d{2})?$/ },
+      { input: 'Client presentation tomorrow afternoon', keyword: 'presentation', timePattern: /^(12|13|14):\d{2}(:\d{2})?$/ },
+      { input: 'Family dinner tomorrow evening', keyword: 'family', timePattern: /^(17|18|19):\d{2}(:\d{2})?$/ },
     ];
 
     for (const term of timeTerms) {
@@ -254,22 +255,22 @@ test.describe('Date/Time Handling', () => {
 
     const tasks = await getTasks(page);
 
-    // Verify morning task has morning time (around 9am)
-    const morningTask = tasks.find((t) => t.text.toLowerCase().includes('meeting'));
-    expect(morningTask.dueTime).toBeDefined();
-    expect(morningTask.dueTime).not.toBeNull();
-    expect(morningTask.dueTime).toMatch(/^(08|09):\d{2}(:\d{2})?$/); // 08:00 or 09:00 (with optional seconds)
+    // Calculate tomorrow's date for verification
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowDateStr = tomorrow.toDateString();
 
-    // Verify afternoon task has afternoon time (around 2pm)
-    const afternoonTask = tasks.find((t) => t.text.toLowerCase().includes('call'));
-    expect(afternoonTask.dueTime).toBeDefined();
-    expect(afternoonTask.dueTime).not.toBeNull();
-    expect(afternoonTask.dueTime).toMatch(/^(12|13|14):\d{2}(:\d{2})?$/); // 12:00-14:00 (with optional seconds)
+    // Verify each task using unique keywords and expected time patterns
+    for (const term of timeTerms) {
+      const task = tasks.find((t) =>
+        t.text.toLowerCase().includes(term.keyword) &&
+        new Date(t.dueDate).toDateString() === tomorrowDateStr
+      );
 
-    // Verify evening task has evening time (around 6pm)
-    const eveningTask = tasks.find((t) => t.text.toLowerCase().includes('dinner'));
-    expect(eveningTask.dueTime).toBeDefined();
-    expect(eveningTask.dueTime).not.toBeNull();
-    expect(eveningTask.dueTime).toMatch(/^(17|18|19):\d{2}(:\d{2})?$/); // 17:00-19:00 (with optional seconds)
+      expect(task).toBeTruthy();
+      expect(task.dueTime).toBeDefined();
+      expect(task.dueTime).not.toBeNull();
+      expect(task.dueTime).toMatch(term.timePattern);
+    }
   });
 });
