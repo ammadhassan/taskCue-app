@@ -12,6 +12,7 @@ import ViewTabs from './components/ViewTabs';
 import CalendarView from './components/CalendarView';
 import LoadingSpinner from './components/LoadingSpinner';
 import Auth from './components/Auth';
+import NotificationToast from './components/NotificationToast';
 import { AuthContextProvider, useAuth } from './contexts/AuthContext';
 import { notificationService } from './services/notificationService';
 import { exportAllTasksToCalendar, exportFolderToCalendar } from './services/calendarService';
@@ -49,6 +50,14 @@ function MainApp() {
   const { user, session } = useAuth();
 
   console.log('🚀 [MainApp] Component mounted/rendered. User:', user?.id || 'NO USER');
+
+  // Expose notificationService to window for E2E tests
+  useEffect(() => {
+    window.notificationService = notificationService;
+    return () => {
+      delete window.notificationService;
+    };
+  }, []);
 
   // State for data from Supabase
   const [tasks, setTasks] = useState([]);
@@ -225,45 +234,38 @@ function MainApp() {
     notificationService.setSoundEnabled(settings.soundAlerts !== false);
   }, [settings.notifications, settings.desktopNotifications, settings.soundAlerts]);
 
-  // Restore scheduled notifications on app load
+  // Schedule time-based notifications when tasks change
   useEffect(() => {
-    console.log('🔄 [APP] Restoring scheduled notifications on app load...');
-    console.log(`🔄 [APP] Total tasks: ${tasks.length}, Notifications enabled: ${settings.notifications}`);
+    if (!settings.notifications) return;
 
-    if (!settings.notifications) {
-      console.log('⚠️ [APP] Notifications disabled - skipping restoration');
-      return;
-    }
+    console.log('🔄 [APP] Re-scheduling notifications for all tasks...');
 
-    // Loop through all incomplete tasks with due date and time
+    // Cancel and re-schedule notifications for all incomplete tasks with due time
     let scheduledCount = 0;
     tasks.forEach((task) => {
       if (!task.completed && task.dueDate && task.dueTime) {
-        console.log(`🔄 [APP] Restoring notification for task: "${task.text}"`);
-        // Re-schedule notification for this task (with settings for multi-channel)
+        // Cancel existing notification for this task (if any)
+        notificationService.cancelScheduledNotification(task.id);
+        // Schedule new notification
         notificationService.scheduleNotification(task, settings);
         scheduledCount++;
       }
     });
 
-    console.log(`✅ [APP] Restored ${scheduledCount} notifications`);
+    console.log(`✅ [APP] Scheduled ${scheduledCount} notification(s)`);
 
     // Cleanup: cancel all scheduled notifications when component unmounts
     return () => {
       console.log('🧹 [APP] Cleaning up scheduled notifications...');
       notificationService.clearAllScheduled();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only once on mount (empty dependency array)
+  }, [tasks, settings.notifications, settings]);
 
   // Check for overdue/upcoming tasks periodically
   useEffect(() => {
     if (!settings.notifications) return;
 
-    // Check immediately on mount
-    notificationService.checkTasks(tasks);
-
-    // Check every 30 minutes
+    // Check every 30 minutes for overdue tasks
     const interval = setInterval(() => {
       notificationService.checkTasks(tasks);
     }, 30 * 60 * 1000);
@@ -272,16 +274,8 @@ function MainApp() {
   }, [tasks, settings.notifications]);
 
   const addTask = async (text, folder = 'Personal', dueDate = null, priority = 'medium', dueTime = null) => {
-    // 🔍 DEBUG LOG
-    console.log('➕ [App addTask] Called:', {
-      text,
-      folder,
-      dueDate,
-      dueTime,
-      priority,
-      hasSmartDefaults: !!(dueDate && dueTime),
-      timestamp: new Date().toISOString()
-    });
+    // TRACE: Log task creation start
+    console.log('💾 [App] Adding task to database:', text);
 
     try {
       // Create task in Supabase
@@ -293,20 +287,11 @@ function MainApp() {
         priority,
       }, session);
 
+      // TRACE: Log successful creation
+      console.log('✅ [App] Task created in database:', newTask);
+
       // Task will appear automatically via real-time subscription
-      // No optimistic update needed since real-time is fast enough
-
-      console.log(`🔔 [APP] Task added. Checking if notification should be scheduled...`);
-      console.log(`🔔 [APP] Notifications enabled: ${settings.notifications}`);
-      console.log(`🔔 [APP] Task has date: ${!!newTask.dueDate}, has time: ${!!newTask.dueTime}`);
-
-      // Schedule notification if task has time and notifications are enabled
-      if (settings.notifications && newTask.dueDate && newTask.dueTime) {
-        console.log(`🔔 [APP] Scheduling notification for new task: "${newTask.text}"`);
-        notificationService.scheduleNotification(newTask, settings);
-      } else {
-        console.log(`⚠️ [APP] NOT scheduling notification (notifications: ${settings.notifications}, hasDate: ${!!newTask.dueDate}, hasTime: ${!!newTask.dueTime})`);
-      }
+      // Notification scheduling handled by useEffect when task appears in tasks array
     } catch (error) {
       console.error('Error adding task:', error);
       alert('Failed to add task. Please try again.');
@@ -368,13 +353,7 @@ function MainApp() {
       // Optimistically update UI
       setTasks(tasks.map((t) => t.id === id ? updatedTask : t));
 
-      // If date or time changed, reschedule notification
-      if (settings.notifications && (changes.dueDate || changes.dueTime)) {
-        notificationService.cancelScheduledNotification(id);
-        if (updatedTask.dueDate && updatedTask.dueTime) {
-          notificationService.scheduleNotification(updatedTask, settings);
-        }
-      }
+      // Notification re-scheduling handled by useEffect when tasks array updates
 
       // Update in Supabase
       await dataService.updateTask(id, changes, session);
@@ -508,6 +487,7 @@ function MainApp() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 transition-colors">
+      <NotificationToast />
       <div className="max-w-7xl mx-auto p-4 md:p-6">
         {/* Dashboard Header */}
         <DashboardHeader
@@ -593,6 +573,7 @@ function MainApp() {
                       <select
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value)}
+                        data-testid="sort-select"
                         className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="createdAt">Created</option>

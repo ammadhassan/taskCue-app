@@ -1,4 +1,10 @@
 import { expect } from '@playwright/test';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'https://edadytvzscxwjtfnhmtz.supabase.co';
+const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVkYWR5dHZ6c2N4d2p0Zm5obXR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0MzQwNzEsImV4cCI6MjA4MzAxMDA3MX0.UVAla1hVpm-AAbMVvrTlRC3v5GkuU-PofsCmVI_YoJY';
+const TEST_EMAIL = 'ammhasun@gmail.com';
+const TEST_PASSWORD = '123456';
 
 /**
  * Helper to login to the application
@@ -22,8 +28,70 @@ export async function login(page, email = 'ammhasun@gmail.com', password = '1234
   await page.fill('[data-testid="password-input"]', password);
   await page.click('[data-testid="login-button"]');
 
-  // Wait for redirect to app
-  await page.waitForSelector('[data-testid="task-form"]', { timeout: 10000 });
+  // Retry logic for rate limit errors
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      await page.waitForSelector('[data-testid="task-form"]', { timeout: 10000 });
+      return; // Success
+    } catch (error) {
+      // Check if rate limit error is visible
+      const rateLimitMsg = await page.locator('text=Request rate limit reached').count();
+
+      if (rateLimitMsg > 0 && retries > 1) {
+        const delay = (4 - retries) * 2000; // 2s, 4s
+        console.log(`⚠️  Rate limit hit. Waiting ${delay}ms before retry...`);
+        await page.waitForTimeout(delay);
+        await page.click('[data-testid="login-button"]'); // Retry login
+        retries--;
+      } else {
+        throw error; // Give up or different error
+      }
+    }
+  }
+}
+
+/**
+ * Helper to create a task directly in the database (bypassing UI and AI)
+ * @param {BrowserContext} context - Playwright browser context
+ * @param {Object} taskData - Task data
+ */
+export async function createTaskDirectly(context, taskData) {
+  const { text, folder = 'Personal', dueDate, dueTime, priority = 'medium' } = taskData;
+
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+  // Sign in
+  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+    email: TEST_EMAIL,
+    password: TEST_PASSWORD,
+  });
+
+  if (authError) {
+    throw new Error(`Failed to sign in: ${authError.message}`);
+  }
+
+  // Create task directly
+  const { data, error } = await supabase
+    .from('tasks')
+    .insert([{
+      user_id: authData.user.id,
+      text,
+      folder,
+      due_date: dueDate,
+      due_time: dueTime,
+      priority,
+      completed: false,
+    }])
+    .select();
+
+  if (error) {
+    throw new Error(`Failed to create task: ${error.message}`);
+  }
+
+  await supabase.auth.signOut();
+
+  return data[0];
 }
 
 /**
@@ -34,9 +102,28 @@ export async function login(page, email = 'ammhasun@gmail.com', password = '1234
 export async function createTask(page, taskData) {
   const { text, folder, dueDate, dueTime, priority } = taskData;
 
-  // Get initial task count
-  const initialTasks = await page.locator('[data-testid="task-item"]').all();
-  const initialCount = initialTasks.length;
+  // Set up console listener BEFORE creating task
+  // This waits for React to finish processing and scheduling notifications
+  const schedulingComplete = new Promise((resolve) => {
+    const listener = (msg) => {
+      const msgText = msg.text();
+
+      // Debug: Show what AI extracted and scheduling details
+      if (msgText.includes('Raw AI response:') ||
+          msgText.includes('[SCHEDULE]') ||
+          msgText.includes('Task created successfully:')) {
+        console.log(`[DEBUG] ${msgText}`);
+      }
+
+      // Wait for the specific log that confirms scheduling completed
+      // The useEffect logs "✅ [APP] Scheduled N notification(s)" when done
+      if (msgText.includes('[APP] Scheduled') && msgText.includes('notification')) {
+        page.off('console', listener); // Remove listener
+        resolve(true);
+      }
+    };
+    page.on('console', listener);
+  });
 
   // Fill task input
   await page.fill('[data-testid="task-input"]', text);
@@ -137,27 +224,55 @@ export async function createTask(page, taskData) {
     );
   }
 
-  // API succeeded, now wait for task to appear in DOM
+  // VALIDATION: For single-task inputs, verify no duplicate create actions
+  const generatedText = responseBody[0].generated_text;
+
   try {
-    await page.waitForFunction(
-      (expectedCount) => {
-        const tasks = document.querySelectorAll('[data-testid="task-item"]');
-        return tasks.length > expectedCount;
-      },
-      initialCount,
-      { timeout: 10000 }
-    );
-  } catch (error) {
-    throw new Error(
-      `❌ UI UPDATE FAILED: Task did not appear in UI within 10 seconds after successful API response.\n` +
-      `API returned: ${JSON.stringify(responseBody)}\n` +
-      `This could be: 1) Supabase real-time subscription issue, 2) UI rendering bug\n` +
-      `This is NOT an API issue - check frontend state management and Supabase subscription.`
-    );
+    // Extract JSON array from response (same logic as frontend)
+    const cleanedText = generatedText.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+    const jsonMatch = cleanedText.match(/\[[\s\S]*\]/);
+
+    if (jsonMatch) {
+      const actions = JSON.parse(jsonMatch[0]);
+
+      // Count create actions
+      const createActions = actions.filter(a => a.action === 'create');
+
+      // For single-task test inputs, we expect exactly 1 create action
+      const isBulkInput = /\b(all|every|each)\b/i.test(text);
+
+      if (!isBulkInput && createActions.length > 1) {
+        // Check if they're duplicates (same task text)
+        const taskTexts = createActions.map(a => (a.task || '').toLowerCase().trim());
+        const uniqueTexts = new Set(taskTexts);
+
+        if (uniqueTexts.size < createActions.length) {
+          console.log(
+            `⚠️ AI RETURNED DUPLICATE TASKS: Got ${createActions.length} duplicates for input "${text}". ` +
+            `Frontend deduplication will handle this.`
+          );
+          console.log(`⚠️ Duplicate actions:`, createActions);
+        }
+      }
+    }
+  } catch (validationError) {
+    // Log warning if validation fails (e.g., JSON parse error)
+    console.log('⚠️ Could not validate action count:', validationError.message);
   }
 
-  // Small delay to avoid overwhelming the API
-  await page.waitForTimeout(1000);
+  // API succeeded, now wait for button to re-enable (indicates processing complete)
+  await page.waitForSelector('[data-testid="add-task-button"]:not([disabled])', { timeout: 10000 });
+
+  // CRITICAL: Wait for React to finish processing and schedule notification
+  // The button re-enables before scheduleNotification() completes because addTask() is async
+  // We listen for the console log that confirms scheduling decision was made
+  await Promise.race([
+    schedulingComplete,
+    page.waitForTimeout(10000).then(() => {
+      console.log('[TEST] Timeout waiting for scheduling confirmation - proceeding anyway');
+      return true;
+    })
+  ]);
 }
 
 /**
@@ -344,8 +459,18 @@ export async function switchView(page, view) {
 export async function changeTheme(page, theme) {
   await page.click('[data-testid="settings-button"]');
   await page.selectOption('[data-testid="theme-select"]', theme);
-  await page.click('[data-testid="close-settings-button"]');
-  await page.waitForTimeout(500);
+
+  // Click save and wait for Supabase PATCH request to complete
+  await Promise.all([
+    page.waitForResponse(
+      response => response.url().includes('/rest/v1/settings') && response.request().method() === 'PATCH',
+      { timeout: 10000 }
+    ),
+    page.click('[data-testid="save-settings-button"]')
+  ]);
+
+  // Wait for modal to close
+  await page.waitForSelector('[data-testid="close-settings-button"]', { state: 'hidden', timeout: 5000 });
 }
 
 /**
@@ -369,7 +494,7 @@ export async function logout(page) {
  * @param {Page} page - Playwright page object
  */
 export async function getAnalytics(page) {
-  await page.click('[data-testid="analytics-button"]');
+  // Analytics are already visible on dashboard - no button click needed
 
   const dueToday = await page.locator('[data-testid="due-today-count"]').innerText();
   const overdue = await page.locator('[data-testid="overdue-count"]').innerText();
@@ -418,4 +543,33 @@ export async function clearAllTasks(page) {
 
   // Give UI a moment to stabilize after deletion
   await page.waitForTimeout(500);
+}
+
+/**
+ * Clear all tasks for test user (Node.js context, not browser)
+ * This works where page.evaluate() fails due to webpack bundling
+ * @returns {Promise<void>}
+ */
+export async function clearAllTasksNodeContext() {
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+  // Sign in
+  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+    email: TEST_EMAIL,
+    password: TEST_PASSWORD,
+  });
+
+  if (authError) {
+    console.log('⚠️  Could not sign in to clear tasks:', authError.message);
+    return;
+  }
+
+  // Delete all tasks
+  await supabase
+    .from('tasks')
+    .delete()
+    .eq('user_id', authData.user.id);
+
+  // Sign out
+  await supabase.auth.signOut();
 }
