@@ -2,7 +2,10 @@ import axios from 'axios';
 import { parseTimeWithDateAwareness, extractTimeFromText } from './dateParser.js';
 
 // Backend proxy URL (no more direct HuggingFace calls to avoid CORS)
-const BACKEND_API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+// In production, use relative URLs (same domain as frontend via Vercel serverless)
+// In development, use localhost backend
+const BACKEND_API_URL = process.env.REACT_APP_BACKEND_URL ||
+  (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3001');
 
 /**
  * Extract tasks using ONLY the LLM - no local parsing logic
@@ -543,8 +546,76 @@ JSON:`;
               throw new Error('No valid actions extracted');
             }
 
-            console.log('✅ [LLM] Final actions:', processedActions);
-            return processedActions;
+            // TRACE: Log actions before deduplication
+            console.log('🔍 [TRACE] Parsed actions from AI:', processedActions);
+            console.log('🔍 [TRACE] Action count:', processedActions.length);
+
+            // Helper function to deduplicate actions
+            const deduplicateActions = (actions) => {
+              console.log(`🔍 [Deduplication] Input: ${actions.length} actions`, actions);
+              const seen = new Map();
+              const deduplicated = [];
+
+              for (const action of actions) {
+                let key;
+
+                if (action.action === 'create') {
+                  // Aggressively normalize text - remove ALL whitespace variations
+                  const text = (action.task || '')
+                    .toLowerCase()
+                    .trim()
+                    .replace(/\s+/g, ' '); // Collapse multiple spaces into one
+
+                  // Normalize folder - handle undefined/null/empty string
+                  const folder = (action.folder || 'personal').toLowerCase().trim();
+
+                  // Normalize dates - convert empty strings to null
+                  const dueDate = (action.dueDate && action.dueDate !== '') ? action.dueDate : null;
+                  const dueTime = (action.dueTime && action.dueTime !== '') ? action.dueTime : null;
+
+                  key = `create:${text}:${folder}:${dueDate}:${dueTime}`;
+                } else if (action.action === 'modify') {
+                  // For modify actions, key = taskId + changes JSON
+                  const changesStr = JSON.stringify(action.changes || {});
+                  key = `modify:${action.taskId}:${changesStr}`;
+                } else if (action.action === 'delete') {
+                  // For delete actions, key = taskId only
+                  key = `delete:${action.taskId}`;
+                } else if (action.action === 'create_folder') {
+                  const folderName = (action.folderName || '').toLowerCase().trim();
+                  key = `create_folder:${folderName}`;
+                } else if (action.action === 'delete_folder') {
+                  const folderName = (action.folderName || '').toLowerCase().trim();
+                  key = `delete_folder:${folderName}`;
+                } else {
+                  // Unknown action type - keep it
+                  deduplicated.push(action);
+                  continue;
+                }
+
+                if (seen.has(key)) {
+                  console.log(`🔍 [Deduplication] Skipping duplicate action:`, action);
+                  console.log(`🔍 [Deduplication] Original action:`, seen.get(key));
+                } else {
+                  seen.set(key, action);
+                  deduplicated.push(action);
+                }
+              }
+
+              if (deduplicated.length < actions.length) {
+                console.log(`⚠️ [Deduplication] Removed ${actions.length - deduplicated.length} duplicate actions`);
+              }
+
+              // TRACE: Log output
+              console.log(`🔍 [Deduplication] Output: ${deduplicated.length} actions`, deduplicated);
+
+              return deduplicated;
+            };
+
+            // Deduplicate actions before returning
+            const deduplicatedActions = deduplicateActions(processedActions);
+            console.log('✅ [LLM] Final actions after deduplication:', deduplicatedActions);
+            return deduplicatedActions;
           }
         }
         throw new Error('Could not find valid JSON in AI response');
