@@ -1,7 +1,11 @@
 import axios from 'axios';
+import { parseTimeWithDateAwareness, extractTimeFromText } from './dateParser.js';
 
 // Backend proxy URL (no more direct HuggingFace calls to avoid CORS)
-const BACKEND_API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+// In production, use relative URLs (same domain as frontend via Vercel serverless)
+// In development, use localhost backend
+const BACKEND_API_URL = process.env.REACT_APP_BACKEND_URL ||
+  (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3001');
 
 /**
  * Extract tasks using ONLY the LLM - no local parsing logic
@@ -16,6 +20,27 @@ export async function extractTasksFromText(text, defaultTiming = 'tomorrow_morni
 
   try {
     console.log('🤖 [LLM] Sending to AI for task extraction:', text);
+
+    // PRE-PROCESS: Check if this is a time-only input (e.g., "at 3pm", "remind me at 9am")
+    const { timeStr } = extractTimeFromText(text);
+    const hasExplicitDate = /\b(today|tomorrow|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next|this|weekend|week|month|day)\b/i.test(text);
+
+    let computedDate = null;
+    let modifiedText = text;
+
+    if (timeStr && !hasExplicitDate) {
+      // Time-only input detected - compute date client-side
+      const result = parseTimeWithDateAwareness(timeStr);
+      if (result) {
+        computedDate = result.date;
+        // Modify text to include explicit date
+        modifiedText = text.replace(/\b(at|@)\s*\d{1,2}(:\d{2})?\s*(am|pm)?/i, (match) => {
+          const isToday = result.date === new Date().toISOString().split('T')[0];
+          return `${match} ${isToday ? 'today' : 'tomorrow'}`;
+        });
+        console.log(`🕐 [Time Logic] Detected time-only input. Computed date: ${computedDate}. Modified text: "${modifiedText}"`);
+      }
+    }
 
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
@@ -58,7 +83,7 @@ export async function extractTasksFromText(text, defaultTiming = 'tomorrow_morni
     const customFoldersList = customFolders.length > 0 ? customFolders.join(', ') : 'None';
 
     // Enhanced prompt that handles both creation and modification
-    const prompt = `<s>[INST] You are an intelligent task management assistant. You can CREATE new tasks, MODIFY/DELETE existing tasks, and MANAGE FOLDERS based on user input.
+    const prompt = `You are an intelligent task management assistant. You can CREATE new tasks, MODIFY/DELETE existing tasks, and MANAGE FOLDERS based on user input.
 
 **Current date and time:** ${todayStr} ${currentTime}
 
@@ -128,9 +153,11 @@ Default folders (cannot be deleted): All Tasks, Work, Personal, Shopping
      2. Extract date as YYYY-MM-DD → put in dueDate
      3. Extract time as HH:MM → put in dueTime
    - Examples:
-     - "tomorrow" → dueDate: tomorrow's date, dueTime: null
+     - "tomorrow" → dueDate: tomorrow's date, dueTime: "09:00" (default morning time)
      - "in 2 hours" → dueDate: calculated date, dueTime: calculated time (HH:MM only)
      - "this evening" → dueDate: today's date, dueTime: "18:00"
+   - CRITICAL: If you provide a dueDate, you MUST also provide a dueTime (never leave it null)
+   - Default times: morning=09:00, afternoon=14:00, evening=18:00, night=20:00
 
 5. **QUALITY CHECKS**:
    - Task text should be 2-8 words (concise)
@@ -144,7 +171,10 @@ Default folders (cannot be deleted): All Tasks, Work, Personal, Shopping
    - "make a new Gym folder" → create_folder action
    - NEVER delete default folders (All Tasks, Work, Personal, Shopping)
    - Validate folder name (non-empty, not duplicate)
-   - If task mentions new folder, create folder FIRST, then create task with that folder
+   - **CRITICAL: Do NOT create folders from location/context words**
+   - Location words (gym, park, office, home, mall, etc.) are CONTEXT, not folders
+   - Only create folders when user explicitly says "create folder", "make folder", or "new folder"
+   - If task mentions location but no explicit folder request, use appropriate default folder (Work/Personal/Shopping)
 
 **Available folders:**
 - Work: professional tasks, meetings, emails, reports
@@ -158,7 +188,10 @@ Default folders (cannot be deleted): All Tasks, Work, Personal, Shopping
 - "today" → ${todayStr}
 - "tomorrow" → ${formatDate(tomorrow)}
 - "next Monday" → calculate from today
-- "this evening" → ${todayStr} 18:00
+- "tomorrow morning" → ${formatDate(tomorrow)} 09:00
+- "tomorrow afternoon" → ${formatDate(tomorrow)} 14:00
+- "tomorrow evening" / "this evening" → ${todayStr} 18:00
+- "tonight" → ${todayStr} 20:00
 
 **Action Types:**
 
@@ -265,28 +298,38 @@ Output: [{"action": "create", "task": "Call doctor", "dueDate": "${formatDate(to
 Input: "add a reminder that I need to send an email to my colleague"
 → Cleanup: remove "add a reminder that I need to"
 → Detect: "colleague" = Work keyword
-Output: [{"action": "create", "task": "Send email to colleague", "dueDate": null, "dueTime": null, "folder": "Work"}]
+Output: [{"action": "create", "task": "Send email to colleague", "dueDate": "${formatDate(tomorrow)}", "dueTime": "09:00", "folder": "Work"}]
 
 Input: "I need to buy milk from the store"
 → Cleanup: remove "I need to"
 → Detect: "buy" and "store" = Shopping keywords
-Output: [{"action": "create", "task": "Buy milk", "dueDate": null, "dueTime": null, "folder": "Shopping"}]
+Output: [{"action": "create", "task": "Buy milk", "dueDate": "${formatDate(tomorrow)}", "dueTime": "10:00", "folder": "Shopping"}]
 
 Input: "please add a task to call my boss tomorrow morning"
 → Cleanup: remove "please add a task to"
 → Detect: "boss" = Work keyword
 Output: [{"action": "create", "task": "Call boss", "dueDate": "${formatDate(tomorrow)}", "dueTime": "09:00", "folder": "Work"}]
 
+Input: "Call tomorrow afternoon"
+→ Cleanup: already clean
+→ Detect: "afternoon" = 14:00 (2 PM)
+Output: [{"action": "create", "task": "Call", "dueDate": "${formatDate(tomorrow)}", "dueTime": "14:00", "folder": "Personal"}]
+
+Input: "Dinner tomorrow evening"
+→ Cleanup: already clean
+→ Detect: "evening" = 18:00 (6 PM)
+Output: [{"action": "create", "task": "Dinner", "dueDate": "${formatDate(tomorrow)}", "dueTime": "18:00", "folder": "Personal"}]
+
 Input: "add buy groceries to shopping folder"
 → Cleanup: remove "add", keep action
 → Detect: "shopping folder" = explicit mention (highest priority)
-Output: [{"action": "create", "task": "Buy groceries", "dueDate": null, "dueTime": null, "folder": "Shopping"}]
+Output: [{"action": "create", "task": "Buy groceries", "dueDate": "${formatDate(tomorrow)}", "dueTime": "10:00", "folder": "Shopping"}]
 
 Input: "create a work task to finish the presentation by friday"
 → Cleanup: remove "create a work task to"
 → Detect: "work task" = explicit Work folder
 → Extract: "by friday" = date
-Output: [{"action": "create", "task": "Finish presentation", "dueDate": "2025-12-13", "dueTime": null, "folder": "Work"}]
+Output: [{"action": "create", "task": "Finish presentation", "dueDate": "2025-12-13", "dueTime": "17:00", "folder": "Work"}]
 
 Input: "I want to schedule a meeting with the team next week"
 → Cleanup: remove "I want to schedule"
@@ -296,7 +339,7 @@ Output: [{"action": "create", "task": "Meeting with team", "dueDate": "2025-12-1
 Input: "add a reminder that I need to pick up bread and milk"
 → Cleanup: remove "add a reminder that I need to"
 → Detect: "pick up" + food items = Shopping
-Output: [{"action": "create", "task": "Pick up bread and milk", "dueDate": null, "dueTime": null, "folder": "Shopping"}]
+Output: [{"action": "create", "task": "Pick up bread and milk", "dueDate": "${formatDate(tomorrow)}", "dueTime": "10:00", "folder": "Shopping"}]
 
 Input: "add a new task for next 5 minutes"
 → Cleanup: remove "add a new task for"
@@ -411,28 +454,45 @@ Input: "delete the Projects folder"
 → Delete custom folder (not default)
 Output: [{"action": "delete_folder", "folderName": "Projects"}]
 
+Input: "Workout at gym tomorrow"
+→ CRITICAL: "gym" is a LOCATION, not a folder name
+→ No explicit folder creation request
+→ Workout = Personal activity
+Output: [{"action": "create", "task": "Workout at gym", "dueDate": "${formatDate(tomorrow)}", "dueTime": "07:00", "folder": "Personal"}]
+
+Input: "Pick up groceries from the mall"
+→ CRITICAL: "mall" is a LOCATION, not a folder name
+→ Groceries = Shopping category
+Output: [{"action": "create", "task": "Pick up groceries", "dueDate": "${formatDate(tomorrow)}", "dueTime": "10:00", "folder": "Shopping"}]
+
+Input: "Meeting at office with team"
+→ CRITICAL: "office" is a LOCATION, not a folder name
+→ Meeting with team = Work category
+Output: [{"action": "create", "task": "Meeting with team", "dueDate": "${formatDate(tomorrow)}", "dueTime": "14:00", "folder": "Work"}]
+
 Input: "add a task to my new Gym folder: workout tomorrow"
+→ EXPLICIT folder creation request
 → Create folder FIRST, then task
 Output: [
   {"action": "create_folder", "folderName": "Gym"},
-  {"action": "create", "task": "Workout", "dueDate": "${formatDate(tomorrow)}", "dueTime": null, "folder": "Gym"}
+  {"action": "create", "task": "Workout", "dueDate": "${formatDate(tomorrow)}", "dueTime": "07:00", "folder": "Gym"}
 ]
 
 Input: "create Projects folder and add prepare presentation task"
+→ EXPLICIT folder creation request
 → Create folder and task together
 Output: [
   {"action": "create_folder", "folderName": "Projects"},
-  {"action": "create", "task": "Prepare presentation", "dueDate": null, "dueTime": null, "folder": "Projects"}
+  {"action": "create", "task": "Prepare presentation", "dueDate": "${formatDate(tomorrow)}", "dueTime": "14:00", "folder": "Projects"}
 ]
 
 **Now process this user input:**
-"${text}"
+"${modifiedText}"
 
 **Return ONLY a valid JSON array of actions:**
 [{action-object-here}]
 
-JSON:
-[/INST]`;
+JSON:`;
 
     // Call backend proxy instead of HuggingFace directly
     const response = await axios.post(
@@ -448,12 +508,16 @@ JSON:
 
     // Parse the AI response
     if (response.data && response.data[0] && response.data[0].generated_text) {
-      const generatedText = response.data[0].generated_text;
+      let generatedText = response.data[0].generated_text;
       console.log('🤖 [LLM] Raw AI response:', generatedText);
 
       try {
-        // Try to extract JSON from the response
-        const jsonMatch = generatedText.match(/\[[\s\S]*?\]/);
+        // Strip markdown code blocks if present (```json ... ```)
+        generatedText = generatedText.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+        console.log('🤖 [LLM] After stripping markdown:', generatedText);
+
+        // Try to extract JSON from the response (greedy match for nested arrays/objects)
+        const jsonMatch = generatedText.match(/\[[\s\S]*\]/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
           if (Array.isArray(parsed) && parsed.length > 0) {
@@ -482,8 +546,76 @@ JSON:
               throw new Error('No valid actions extracted');
             }
 
-            console.log('✅ [LLM] Final actions:', processedActions);
-            return processedActions;
+            // TRACE: Log actions before deduplication
+            console.log('🔍 [TRACE] Parsed actions from AI:', processedActions);
+            console.log('🔍 [TRACE] Action count:', processedActions.length);
+
+            // Helper function to deduplicate actions
+            const deduplicateActions = (actions) => {
+              console.log(`🔍 [Deduplication] Input: ${actions.length} actions`, actions);
+              const seen = new Map();
+              const deduplicated = [];
+
+              for (const action of actions) {
+                let key;
+
+                if (action.action === 'create') {
+                  // Aggressively normalize text - remove ALL whitespace variations
+                  const text = (action.task || '')
+                    .toLowerCase()
+                    .trim()
+                    .replace(/\s+/g, ' '); // Collapse multiple spaces into one
+
+                  // Normalize folder - handle undefined/null/empty string
+                  const folder = (action.folder || 'personal').toLowerCase().trim();
+
+                  // Normalize dates - convert empty strings to null
+                  const dueDate = (action.dueDate && action.dueDate !== '') ? action.dueDate : null;
+                  const dueTime = (action.dueTime && action.dueTime !== '') ? action.dueTime : null;
+
+                  key = `create:${text}:${folder}:${dueDate}:${dueTime}`;
+                } else if (action.action === 'modify') {
+                  // For modify actions, key = taskId + changes JSON
+                  const changesStr = JSON.stringify(action.changes || {});
+                  key = `modify:${action.taskId}:${changesStr}`;
+                } else if (action.action === 'delete') {
+                  // For delete actions, key = taskId only
+                  key = `delete:${action.taskId}`;
+                } else if (action.action === 'create_folder') {
+                  const folderName = (action.folderName || '').toLowerCase().trim();
+                  key = `create_folder:${folderName}`;
+                } else if (action.action === 'delete_folder') {
+                  const folderName = (action.folderName || '').toLowerCase().trim();
+                  key = `delete_folder:${folderName}`;
+                } else {
+                  // Unknown action type - keep it
+                  deduplicated.push(action);
+                  continue;
+                }
+
+                if (seen.has(key)) {
+                  console.log(`🔍 [Deduplication] Skipping duplicate action:`, action);
+                  console.log(`🔍 [Deduplication] Original action:`, seen.get(key));
+                } else {
+                  seen.set(key, action);
+                  deduplicated.push(action);
+                }
+              }
+
+              if (deduplicated.length < actions.length) {
+                console.log(`⚠️ [Deduplication] Removed ${actions.length - deduplicated.length} duplicate actions`);
+              }
+
+              // TRACE: Log output
+              console.log(`🔍 [Deduplication] Output: ${deduplicated.length} actions`, deduplicated);
+
+              return deduplicated;
+            };
+
+            // Deduplicate actions before returning
+            const deduplicatedActions = deduplicateActions(processedActions);
+            console.log('✅ [LLM] Final actions after deduplication:', deduplicatedActions);
+            return deduplicatedActions;
           }
         }
         throw new Error('Could not find valid JSON in AI response');

@@ -2,7 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const nodemailer = require('nodemailer');
-require('dotenv').config(); // Railway provides env vars directly
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') }); // Load .env from server directory
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -10,6 +11,7 @@ const PORT = process.env.PORT || 3001;
 // Enable CORS for frontend
 const allowedOrigins = [
   'http://localhost:3000',
+  'http://127.0.0.1:3000', // Playwright uses 127.0.0.1 instead of localhost
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
@@ -43,9 +45,11 @@ app.get('/health', (req, res) => {
 // Proxy endpoint for HuggingFace API
 app.post('/api/extract-tasks', async (req, res) => {
   try {
+    console.log('📨 [SERVER] Received extract-tasks request');
     const { prompt } = req.body;
 
     if (!prompt) {
+      console.log('❌ [SERVER] No prompt provided in request');
       return res.status(400).json({ error: 'Prompt is required' });
     }
 
@@ -245,9 +249,11 @@ app.post('/api/send-sms', async (req, res) => {
   }
 });
 
-// Start server - bind to 0.0.0.0 to accept external connections (required for Railway)
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 TaskCue Backend running on port ${PORT}`);
+// Start server - bind to 0.0.0.0 for dual-stack support (IPv4 + IPv6)
+// This allows both localhost (resolves to ::1 on modern systems) and 127.0.0.1 to connect
+const host = '0.0.0.0';
+app.listen(PORT, host, () => {
+  console.log(`🚀 TaskCue Backend running on ${host}:${PORT}`);
   console.log(`🔧 FRONTEND_URL: ${process.env.FRONTEND_URL || 'Not set'}`);
   console.log(`✅ CORS allowed origins:`, allowedOrigins);
   console.log(`📡 Ready to proxy OpenAI API requests`);
