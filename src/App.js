@@ -124,7 +124,7 @@ function MainApp() {
     }
 
     loadData();
-  }, [user]);
+  }, [user, session]);
 
   // Subscribe to real-time updates
   useEffect(() => {
@@ -194,7 +194,7 @@ function MainApp() {
       unsubscribeTasks();
       unsubscribeFolders();
     };
-  }, [user?.id]);
+  }, [user?.id, session]);
 
   // Apply theme
   useEffect(() => {
