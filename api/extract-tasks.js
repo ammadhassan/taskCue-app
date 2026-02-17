@@ -1,7 +1,7 @@
 // Vercel Serverless Function - OpenAI Task Extraction Proxy
 // Forwards task extraction requests to OpenAI API
 
-const axios = require('axios');
+import axios from 'axios';
 
 export default async function handler(req, res) {
   // Only accept POST requests
