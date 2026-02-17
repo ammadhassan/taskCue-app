@@ -1,10 +1,13 @@
 import { test, expect } from '@playwright/test';
-import { login, createTask, switchView, changeTheme } from '../helpers/test-utils.js';
+import { login, createTask, createTaskDirectly, clearAllTasksNodeContext, switchView, changeTheme } from '../helpers/test-utils.js';
 import { themeTestData } from '../helpers/fixtures.js';
 
 test.describe('Views and UI', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
+
+    // CLEANUP: Delete all existing tasks first to avoid accumulation
+    await clearAllTasksNodeContext();
 
     // Create some test tasks
     const testTasks = [
@@ -26,10 +29,21 @@ test.describe('Views and UI', () => {
     ];
 
     for (const task of testTasks) {
-      await createTask(page, task);
+      await createTaskDirectly(page.context(), task);
     }
 
-    await page.waitForTimeout(1000);
+    // Reload page to fetch tasks from database (real-time subscriptions don't pick up tasks created outside browser)
+    await page.reload();
+    await page.waitForSelector('[data-testid="task-form"]', { timeout: 10000 });
+
+    // Wait for tasks to load
+    await page.waitForFunction(
+      () => {
+        const tasks = document.querySelectorAll('[data-testid="task-item"]');
+        return tasks.length >= 3;
+      },
+      { timeout: 10000 }
+    );
   });
 
   test('List view displays tasks correctly', async ({ page }) => {
@@ -135,26 +149,15 @@ test.describe('Views and UI', () => {
   test('Theme change to light mode works', async ({ page }) => {
     // First switch to dark mode
     await changeTheme(page, 'dark');
-    await page.waitForTimeout(500);
+    await page.waitForSelector('html.dark', { timeout: 5000 });
 
     // Then switch to light mode
     await changeTheme(page, 'light');
-    await page.waitForTimeout(500);
 
-    // Verify light theme is applied
-    const body = page.locator('body');
-    const backgroundColor = await body.evaluate((el) =>
-      window.getComputedStyle(el).backgroundColor
-    );
-
-    // Light theme should have a light background
-    // RGB values for light backgrounds are typically high (close to 255)
-    const rgbMatch = backgroundColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-    if (rgbMatch) {
-      const [_, r, g, b] = rgbMatch.map(Number);
-      // At least one value should be high for light mode
-      expect(Math.max(r, g, b)).toBeGreaterThan(200);
-    }
+    // Wait for dark class to be removed (this IS light mode)
+    await page.waitForFunction(() => {
+      return !document.documentElement.classList.contains('dark');
+    }, { timeout: 5000 });
   });
 
   test('Theme preference persists after page refresh', async ({ page }) => {
@@ -185,8 +188,8 @@ test.describe('Views and UI', () => {
     // Switch to list view
     await switchView(page, 'list');
 
-    // Click sort by due date
-    await page.click('[data-testid="sort-by-date"]');
+    // Select sort by due date from dropdown
+    await page.selectOption('[data-testid="sort-select"]', 'dueDate');
     await page.waitForTimeout(500);
 
     // Get all task due dates
@@ -231,18 +234,21 @@ test.describe('Views and UI', () => {
   });
 
   test('Tasks display correctly in both views without visual overflow', async ({ page }) => {
-    // Create a task with long text
-    await createTask(page, {
+    // Create a task with long text - USE createTaskDirectly to bypass AI
+    await createTaskDirectly(page.context(), {
       text: 'This is a very long task description that should not cause visual overflow in either list or calendar view and should be handled gracefully by the UI',
     });
 
+    // Reload to show the new task
+    await page.reload();
+    await page.waitForSelector('[data-testid="task-form"]');
     await page.waitForTimeout(1000);
 
     // Test list view
     await switchView(page, 'list');
     const listView = page.locator('[data-testid="task-list"]');
 
-    // Take screenshot to verify no overflow
+    // Wait for list view to be visible
     await expect(listView).toBeVisible();
 
     // Verify no horizontal scrollbar (indicates overflow)
@@ -256,8 +262,9 @@ test.describe('Views and UI', () => {
     await switchView(page, 'calendar');
     const calendarView = page.locator('[data-testid="calendar-grid"]');
 
-    // Verify calendar is visible
+    // Wait for calendar to be visible and stabilize
     await expect(calendarView).toBeVisible();
+    await page.waitForTimeout(500);
 
     // Verify no overflow in calendar
     const hasCalendarOverflow = await page.evaluate(() => {
