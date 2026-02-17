@@ -1,7 +1,7 @@
 // Vercel Serverless Function - Email Notifications
 // Sends email task reminders via Gmail
 
-const nodemailer = require('nodemailer');
+import nodemailer from 'nodemailer';
 
 export default async function handler(req, res) {
   // Only accept POST requests

@@ -25,7 +25,8 @@ export default async function handler(req, res) {
     // Dynamically import Twilio (only if configured)
     let twilio;
     try {
-      twilio = require('twilio');
+      const twilioModule = await import('twilio');
+      twilio = twilioModule.default;
     } catch (e) {
       return res.status(500).json({
         error: 'Twilio package not installed. Run: npm install twilio'
