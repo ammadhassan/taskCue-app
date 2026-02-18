@@ -5,6 +5,10 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave }) {
   const [testingSMS, setTestingSMS] = useState(false);
   const [testResult, setTestResult] = useState(null);
 
+  // Backend URL configuration - use relative URLs in production (Vercel serverless)
+  const BACKEND_URL = process.env.REACT_APP_BACKEND_URL ||
+    (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3001');
+
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
@@ -37,7 +41,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave }) {
     setTestResult(null);
 
     try {
-      const response = await fetch('http://localhost:3001/api/send-email', {
+      const response = await fetch(`${BACKEND_URL}/api/send-email`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -80,7 +84,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave }) {
     setTestResult(null);
 
     try {
-      const response = await fetch('http://localhost:3001/api/send-sms', {
+      const response = await fetch(`${BACKEND_URL}/api/send-sms`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -214,6 +218,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave }) {
                 type="checkbox"
                 name="soundAlerts"
                 defaultChecked={settings.soundAlerts !== false}
+                data-testid="enable-sound-alerts"
                 className="w-4 h-4"
               />
               <span>Sound Alerts</span>
@@ -224,6 +229,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave }) {
                 type="checkbox"
                 name="emailNotifications"
                 defaultChecked={settings.emailNotifications === true}
+                data-testid="enable-email-notifications"
                 className="w-4 h-4"
               />
               <span>Email Notifications</span>
@@ -234,6 +240,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave }) {
                 type="checkbox"
                 name="smsNotifications"
                 defaultChecked={settings.smsNotifications === true}
+                data-testid="enable-sms-notifications"
                 className="w-4 h-4"
               />
               <span>SMS/Text Notifications</span>
@@ -276,6 +283,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave }) {
                 name="email"
                 defaultValue={settings.email || ''}
                 placeholder="your-email@example.com"
+                data-testid="email-address"
                 className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
@@ -306,6 +314,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave }) {
                 name="phoneNumber"
                 defaultValue={settings.phoneNumber || ''}
                 placeholder="+1234567890"
+                data-testid="phone-number"
                 className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
@@ -327,6 +336,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave }) {
             <select
               name="theme"
               defaultValue={settings.theme}
+              data-testid="theme-select"
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 dark:text-white"
             >
               <option value="light">Light</option>
@@ -364,12 +374,14 @@ export default function SettingsModal({ isOpen, onClose, settings, onSave }) {
             <button
               type="button"
               onClick={onClose}
+              data-testid="close-settings-button"
               className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-white transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
+              data-testid="save-settings-button"
               className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
             >
               Save

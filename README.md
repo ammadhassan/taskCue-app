@@ -1,6 +1,9 @@
-# Getting Started with Create React App
+# TaskCue - Smart Task Management
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+
+## CI/CD Status
+This project uses automated testing and deployment via GitHub Actions and Vercel.
 
 ## Available Scripts
 

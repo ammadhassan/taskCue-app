@@ -1,13 +1,17 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import App from '../App';
-import { extractTasksFromText } from '../services/taskExtractor';
-import { notificationService } from '../services/notificationService';
+// Mock Supabase client to prevent auth callbacks during tests
+// Jest will automatically use the manual mock from src/__mocks__/supabaseClient.js
+jest.mock('../supabaseClient');
 
 // Mock the services
 jest.mock('../services/taskExtractor');
 jest.mock('../services/notificationService');
 jest.mock('../services/calendarService');
+
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import App from '../App';
+import { extractTasksFromText } from '../services/taskExtractor';
+import { notificationService } from '../services/notificationService';
 
 // Mock localStorage
 const localStorageMock = (() => {

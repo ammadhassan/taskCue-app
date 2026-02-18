@@ -11,6 +11,7 @@ class NotificationService {
     this.scheduledNotifications = new Map(); // Store timeout IDs
     this.notifiedTasks = new Map(); // Track which tasks have been notified today
     this.lastResetDate = new Date().toDateString(); // Track when we last reset
+    this.listeners = []; // Event listeners for in-app notifications
   }
 
   /**
@@ -39,6 +40,20 @@ class NotificationService {
   markAsNotified(taskId, notificationType) {
     const key = `${taskId}_${notificationType}`;
     this.notifiedTasks.set(key, Date.now());
+  }
+
+  /**
+   * Subscribe to notification events
+   */
+  onNotification(callback) {
+    this.listeners.push(callback);
+  }
+
+  /**
+   * Unsubscribe from notification events
+   */
+  offNotification(callback) {
+    this.listeners = this.listeners.filter(cb => cb !== callback);
   }
 
   /**
@@ -170,6 +185,16 @@ class NotificationService {
     const body = task.text || 'Task notification';
 
     console.log(`📢 [NOTIFICATION] Attempting to show notification: "${title}" - "${body}"`);
+
+    // Emit to UI listeners (in-app notification toast)
+    this.listeners.forEach(callback => {
+      callback({
+        title: title,
+        body: body,
+        task: task,
+        type: type
+      });
+    });
 
     // Show notification (sound will play inside showNotification)
     this.showNotification(title, { body });
@@ -376,7 +401,10 @@ class NotificationService {
       return false;
     }
 
-    const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+    // In production, use relative URLs (same domain as frontend via Vercel serverless)
+    // In development, use localhost backend
+    const BACKEND_URL = process.env.REACT_APP_BACKEND_URL ||
+      (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3001');
 
     try {
       const response = await fetch(`${BACKEND_URL}/api/send-email`, {
@@ -420,7 +448,10 @@ class NotificationService {
       return false;
     }
 
-    const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+    // In production, use relative URLs (same domain as frontend via Vercel serverless)
+    // In development, use localhost backend
+    const BACKEND_URL = process.env.REACT_APP_BACKEND_URL ||
+      (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3001');
 
     try {
       const message = `⏰ Task Reminder: ${task.text}${

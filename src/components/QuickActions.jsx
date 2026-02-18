@@ -86,13 +86,14 @@ export default function QuickActions({ onAddTask, folders, onSelectFolder, selec
         <div className="border-t border-gray-200 dark:border-gray-700 my-4"></div>
 
         {/* View Filters */}
-        <div className="space-y-2">
+        <div className="space-y-2" data-testid="folder-list">
           <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
             Quick Filters
           </p>
 
           <button
             onClick={() => onSelectFolder('All Tasks')}
+            data-testid="filter-all-tasks"
             className={`
               w-full flex items-center justify-between px-4 py-2 rounded-lg
               transition-all duration-200
@@ -110,6 +111,7 @@ export default function QuickActions({ onAddTask, folders, onSelectFolder, selec
             <div key={folder} className="group flex items-center gap-2">
               <button
                 onClick={() => onSelectFolder(folder)}
+                data-testid={`filter-${folder.toLowerCase().replace(/\s+/g, '-')}`}
                 className={`
                   flex-1 flex items-center justify-between px-4 py-2 rounded-lg
                   transition-all duration-200
@@ -141,6 +143,7 @@ export default function QuickActions({ onAddTask, folders, onSelectFolder, selec
           {!showAddFolder ? (
             <button
               onClick={() => setShowAddFolder(true)}
+              data-testid="add-folder-button"
               className="w-full px-4 py-2 text-left text-blue-500 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors text-sm font-medium"
             >
               + Add Folder
@@ -153,11 +156,13 @@ export default function QuickActions({ onAddTask, folders, onSelectFolder, selec
                 onChange={(e) => setNewFolderName(e.target.value)}
                 placeholder="Folder name..."
                 autoFocus
+                data-testid="folder-name-input"
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <div className="flex gap-2">
                 <button
                   type="submit"
+                  data-testid="save-folder-button"
                   className="flex-1 px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition-colors"
                 >
                   Add

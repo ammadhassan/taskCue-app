@@ -2,6 +2,7 @@ import { useState } from 'react';
 import VoiceInput from './VoiceInput';
 import { extractTasksFromText } from '../services/taskExtractor';
 import { getSmartDefaults, shouldApplyDefaults } from '../services/defaultDateSelector';
+import { detectOperationType, filterTasksForOperation } from '../services/operationDetector';
 
 export default function TaskForm({ onAddTask, folders, selectedFolder, settings, tasks, onModifyTask, onDeleteTask, onAddFolder, onDeleteFolder }) {
   const [input, setInput] = useState('');
@@ -21,15 +22,28 @@ export default function TaskForm({ onAddTask, folders, selectedFolder, settings,
         // Create new task
         let taskDueDate = actionItem.dueDate || dueDate || null;
         let taskDueTime = actionItem.dueTime || dueTime || null; // AI time takes priority, fallback to manual
-        const taskFolder = actionItem.folder || folder;
 
-        // Apply smart defaults if AI didn't extract date/time
+        // Folder priority logic:
+        // - If user explicitly selected a CUSTOM folder (not default Work/Personal/Shopping), always use it
+        // - Otherwise, let AI categorize based on text content
+        const defaultFolders = ['Work', 'Personal', 'Shopping'];
+        const isCustomFolder = !defaultFolders.includes(folder);
+        const taskFolder = isCustomFolder ? folder : (actionItem.folder || folder);
+
+        // Apply smart defaults for missing fields
         if (shouldApplyDefaults(taskDueDate, taskDueTime)) {
           const defaults = getSmartDefaults(actionItem.task, settings?.defaultTiming || 'tomorrow_morning');
-          taskDueDate = defaults.dueDate;
-          taskDueTime = defaults.dueTime;
+
+          // Keep AI-extracted values, only fill in missing ones
+          taskDueDate = taskDueDate || defaults.dueDate;
+          taskDueTime = taskDueTime || defaults.dueTime;
+
           console.log('✨ [AI Agent] Applied smart defaults:', {
             task: actionItem.task,
+            originalDate: actionItem.dueDate,
+            originalTime: actionItem.dueTime,
+            finalDate: taskDueDate,
+            finalTime: taskDueTime,
             defaults,
             reason: defaults.reason
           });
@@ -69,10 +83,16 @@ export default function TaskForm({ onAddTask, folders, selectedFolder, settings,
     setIsExtracting(true);
 
     try {
+      // Detect operation type and filter tasks to reduce prompt size
+      const operationType = detectOperationType(input);
+      const relevantTasks = filterTasksForOperation(operationType, tasks || [], input);
+
+      console.log(`🔍 [Operation Detector] Detected: ${operationType}, passing ${relevantTasks.length}/${(tasks || []).length} tasks`);
+
       const actions = await extractTasksFromText(
         input,
         settings?.defaultTiming || 'tomorrow_morning',
-        tasks || [],
+        relevantTasks,  // Filtered tasks instead of all tasks
         folders || []
       );
 
@@ -136,10 +156,16 @@ export default function TaskForm({ onAddTask, folders, selectedFolder, settings,
       setIsExtracting(true);
 
       try {
+        // Detect operation type and filter tasks to reduce prompt size
+        const operationType = detectOperationType(transcript);
+        const relevantTasks = filterTasksForOperation(operationType, tasks || [], transcript);
+
+        console.log(`🔍 [Operation Detector] Voice - Detected: ${operationType}, passing ${relevantTasks.length}/${(tasks || []).length} tasks`);
+
         const actions = await extractTasksFromText(
           transcript,
           settings?.defaultTiming || 'tomorrow_morning',
-          tasks || [],
+          relevantTasks,  // Filtered tasks instead of all tasks
           folders || []
         );
 
@@ -172,11 +198,12 @@ export default function TaskForm({ onAddTask, folders, selectedFolder, settings,
   };
 
   return (
-    <div className="mb-6 space-y-3">
+    <div className="mb-6 space-y-3" data-testid="task-form">
       {/* Voice Toggle - Keep as explicit option */}
       <div className="flex justify-end">
         <button
           type="button"
+          data-testid="voice-input-button"
           onClick={() => setShowVoice(!showVoice)}
           className={`px-4 py-2 rounded-lg font-medium transition-colors ${
             showVoice
@@ -213,6 +240,7 @@ export default function TaskForm({ onAddTask, folders, selectedFolder, settings,
               <select
                 value={folder}
                 onChange={(e) => setFolder(e.target.value)}
+                data-testid="folder-select"
                 className="px-3 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {folders
@@ -227,12 +255,14 @@ export default function TaskForm({ onAddTask, folders, selectedFolder, settings,
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                data-testid="task-input"
                 placeholder="Describe what you want... AI will understand! (e.g., 'add buy milk to work folder')"
                 className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400 dark:placeholder-gray-500"
               />
               <button
                 type="submit"
                 disabled={isExtracting}
+                data-testid="add-task-button"
                 className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isExtracting ? 'Processing...' : 'Add Task(s)'}
@@ -248,6 +278,7 @@ export default function TaskForm({ onAddTask, folders, selectedFolder, settings,
                 <input
                   type="date"
                   value={dueDate || ''}
+                  data-testid="date-input"
                   onChange={(e) => {
                     const newValue = e.target.value;
                     console.log('📅 [TaskForm Date Input] Changed:', {
@@ -271,6 +302,7 @@ export default function TaskForm({ onAddTask, folders, selectedFolder, settings,
                 <input
                   type="time"
                   value={dueTime || ''}
+                  data-testid="time-input"
                   onChange={(e) => {
                     const newValue = e.target.value;
                     console.log('🕐 [TaskForm Time Input] Changed:', {
@@ -294,6 +326,7 @@ export default function TaskForm({ onAddTask, folders, selectedFolder, settings,
                 <select
                   value={priority}
                   onChange={(e) => setPriority(e.target.value)}
+                  data-testid="priority-select"
                   className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 >
                   <option value="low">Low</option>
