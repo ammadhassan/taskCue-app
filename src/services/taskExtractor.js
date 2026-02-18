@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { parseTimeWithDateAwareness, extractTimeFromText } from './dateParser.js';
 
 // Backend proxy URL (no more direct HuggingFace calls to avoid CORS)
 // In production, use relative URLs (same domain as frontend via Vercel serverless)
@@ -20,27 +19,6 @@ export async function extractTasksFromText(text, defaultTiming = 'tomorrow_morni
 
   try {
     console.log('🤖 [LLM] Sending to AI for task extraction:', text);
-
-    // PRE-PROCESS: Check if this is a time-only input (e.g., "at 3pm", "remind me at 9am")
-    const { timeStr } = extractTimeFromText(text);
-    const hasExplicitDate = /\b(today|tomorrow|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next|this|weekend|week|month|day)\b/i.test(text);
-
-    let computedDate = null;
-    let modifiedText = text;
-
-    if (timeStr && !hasExplicitDate) {
-      // Time-only input detected - compute date client-side
-      const result = parseTimeWithDateAwareness(timeStr);
-      if (result) {
-        computedDate = result.date;
-        // Modify text to include explicit date
-        modifiedText = text.replace(/\b(at|@)\s*\d{1,2}(:\d{2})?\s*(am|pm)?/i, (match) => {
-          const isToday = result.date === new Date().toISOString().split('T')[0];
-          return `${match} ${isToday ? 'today' : 'tomorrow'}`;
-        });
-        console.log(`🕐 [Time Logic] Detected time-only input. Computed date: ${computedDate}. Modified text: "${modifiedText}"`);
-      }
-    }
 
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
@@ -487,7 +465,7 @@ Output: [
 ]
 
 **Now process this user input:**
-"${modifiedText}"
+"${text}"
 
 **Return ONLY a valid JSON array of actions:**
 [{action-object-here}]
